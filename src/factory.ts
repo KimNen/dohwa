@@ -14,7 +14,7 @@ import type {
   TriangleNode,
 } from './types.js';
 import { DEFAULT_STYLE } from './types.js';
-import type { Matrix } from './matrix.js';
+import type { Matrix } from './geometry/matrix.js';
 
 /**
  * Pure node constructors — no DOM, no engine instance required.

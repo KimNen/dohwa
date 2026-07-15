@@ -1,5 +1,5 @@
 /** 도화 dohwa — core types */
-import type { Matrix } from './matrix.js';
+import type { Matrix } from './geometry/matrix.js';
 export interface Point {
     x: number;
     y: number;

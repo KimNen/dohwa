@@ -1,5 +1,5 @@
-import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform } from '../dist/geometry.js';
-import { compose, rotation, applyToPoint, decompose } from '../dist/matrix.js';
+import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform } from '../dist/geometry/geometry.js';
+import { compose, rotation, applyToPoint, decompose } from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
 const close = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;

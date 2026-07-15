@@ -1,5 +1,5 @@
 import type { DiamondNode, DohwaNode, EllipseNode, GroupNode, ImageNode, LineNode, PathNode, Point, RectNode, SceneJSON, Style, TextNode, TriangleNode } from './types.js';
-import type { Matrix } from './matrix.js';
+import type { Matrix } from './geometry/matrix.js';
 export declare function createId(prefix?: string): string;
 export interface BoxInit {
     x: number;

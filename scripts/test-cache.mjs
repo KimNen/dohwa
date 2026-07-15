@@ -1,4 +1,4 @@
-import { shouldCache, cacheKey } from '../dist/cache.js';
+import { shouldCache, cacheKey } from '../dist/render/cache.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
 const style = { stroke:'#000', fill:'transparent', strokeWidth:2, opacity:1 };

@@ -1,4 +1,4 @@
-import type { Dohwa } from './dohwa.js';
+import type { Dohwa } from './core/dohwa.js';
 import type { Style, Tool, Viewport } from './types.js';
 import { ACTION_METAS, type ActionKey } from './tools.js';
 

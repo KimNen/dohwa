@@ -1,4 +1,4 @@
-import { Quadtree } from '../dist/spatial.js';
+import { Quadtree } from '../dist/geometry/spatial.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
 

@@ -1,7 +1,7 @@
 import {
   IDENTITY, multiply, compose, composeAll, applyToPoint, invert,
   rotation, scaling, translation, decompose, transformBBox, isIdentity, determinant,
-} from '../dist/matrix.js';
+} from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------- engine
-export { Dohwa } from './dohwa.js';
+export { Dohwa } from './core/dohwa.js';
 
 // ---------------------------------------------------------------- pure geometry (DOM-free)
 export {
@@ -22,7 +22,7 @@ export {
   nodeMatrix,
   toLocalPoint,
   hasTransform,
-} from './geometry.js';
+} from './geometry/geometry.js';
 
 // ---------------------------------------------------------------- affine matrix (DOM-free)
 export {
@@ -41,25 +41,25 @@ export {
   decompose,
   toCSS,
   transformBBox,
-} from './matrix.js';
-export type { Matrix, TransformParts, DecomposedTransform } from './matrix.js';
+} from './geometry/matrix.js';
+export type { Matrix, TransformParts, DecomposedTransform } from './geometry/matrix.js';
 
 // ---------------------------------------------------------------- spatial index (DOM-free)
-export { Quadtree } from './spatial.js';
-export type { IndexedItem } from './spatial.js';
+export { Quadtree } from './geometry/spatial.js';
+export type { IndexedItem } from './geometry/spatial.js';
 
 // ---------------------------------------------------------------- object cache (opt-in)
-export { ObjectCache, shouldCache, cacheKey } from './cache.js';
+export { ObjectCache, shouldCache, cacheKey } from './render/cache.js';
 
 // ---------------------------------------------------------------- rendering
-export { renderScene, renderNode, tracePath, measureText, arrowHead, LINE_HEIGHT } from './render.js';
-export type { ImageCache, RenderOptions } from './render.js';
+export { renderScene, renderNode, tracePath, measureText, arrowHead, LINE_HEIGHT } from './render/render.js';
+export type { ImageCache, RenderOptions } from './render/render.js';
 
 // ---------------------------------------------------------------- serialization
-export { sceneToSVG, nodeToSVG } from './svg.js';
+export { sceneToSVG, nodeToSVG } from './render/svg.js';
 
 // ---------------------------------------------------------------- primitives
-export { History, Emitter } from './core.js';
+export { History, Emitter } from './core/core.js';
 
 // ---------------------------------------------------------------- types
 export * from './types.js';

@@ -338,819 +338,7 @@
 
 <script>/* dohwa — IIFE build. window.Dohwa.* */
 var Dohwa = (function () {
-// ---- dist/types.js
-const DEFAULT_STYLE = {
-    stroke: '#1c1917',
-    fill: 'transparent',
-    strokeWidth: 3,
-    opacity: 1,
-};
-//# sourceMappingURL=types.js.map
-
-// ---- dist/matrix.js
-const IDENTITY = [1, 0, 0, 1, 0, 0];
-function multiply(m1, m2) {
-    const [a1, b1, c1, d1, e1, f1] = m1;
-    const [a2, b2, c2, d2, e2, f2] = m2;
-    return [
-        a1 * a2 + c1 * b2,
-        b1 * a2 + d1 * b2,
-        a1 * c2 + c1 * d2,
-        b1 * c2 + d1 * d2,
-        a1 * e2 + c1 * f2 + e1,
-        b1 * e2 + d1 * f2 + f1,
-    ];
-}
-/** Compose a chain left-to-right: composeAll([A, B, C]) applies A, then B, then C. */
-function composeAll(matrices) {
-    let acc = IDENTITY;
-    for (const m of matrices)
-        acc = multiply(acc, m);
-    return acc;
-}
-function translation(x, y) {
-    return [1, 0, 0, 1, x, y];
-}
-function scaling(sx, sy = sx) {
-    return [sx, 0, 0, sy, 0, 0];
-}
-function rotation(angle) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return [cos, sin, -sin, cos, 0, 0];
-}
-/** Skew given in radians. */
-function skewing(skewX, skewY) {
-    return [1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0];
-}
-function compose(parts) {
-    const { translateX = 0, translateY = 0, angle = 0, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0, } = parts;
-    let m = translation(translateX, translateY);
-    if (angle !== 0)
-        m = multiply(m, rotation(angle));
-    if (skewX !== 0 || skewY !== 0)
-        m = multiply(m, skewing(skewX, skewY));
-    if (scaleX !== 1 || scaleY !== 1)
-        m = multiply(m, scaling(scaleX, scaleY));
-    return m;
-}
-function applyToPoint(m, p) {
-    return {
-        x: m[0] * p.x + m[2] * p.y + m[4],
-        y: m[1] * p.x + m[3] * p.y + m[5],
-    };
-}
-function determinant(m) {
-    return m[0] * m[3] - m[1] * m[2];
-}
-function invert(m) {
-    const det = determinant(m);
-    if (Math.abs(det) < 1e-12)
-        return IDENTITY; // degenerate — avoid NaN blowups
-    const [a, b, c, d, e, f] = m;
-    const invDet = 1 / det;
-    return [
-        d * invDet,
-        -b * invDet,
-        -c * invDet,
-        a * invDet,
-        (c * f - d * e) * invDet,
-        (b * e - a * f) * invDet,
-    ];
-}
-function isIdentity(m) {
-    return (m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0);
-}
-function decompose(m) {
-    const [a, b, c, d, e, f] = m;
-    const angle = Math.atan2(b, a);
-    const denom = a * a + b * b;
-    const scaleX = Math.sqrt(denom);
-    const skewX = Math.atan2(a * c + b * d, denom);
-    const scaleY = determinant(m) / (scaleX || 1);
-    return { translateX: e, translateY: f, angle, scaleX, scaleY, skewX };
-}
-/** Format for CSS/Canvas: "matrix(a,b,c,d,e,f)". */
-function toCSS(m) {
-    return `matrix(${m.map((n) => Math.round(n * 1e6) / 1e6).join(',')})`;
-}
-/** Transform an axis-aligned box, returning the AABB of the 4 mapped corners. */
-function transformBBox(m, box) {
-    const corners = [
-        applyToPoint(m, { x: box.x, y: box.y }),
-        applyToPoint(m, { x: box.x + box.w, y: box.y }),
-        applyToPoint(m, { x: box.x + box.w, y: box.y + box.h }),
-        applyToPoint(m, { x: box.x, y: box.y + box.h }),
-    ];
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of corners) {
-        if (p.x < minX)
-            minX = p.x;
-        if (p.y < minY)
-            minY = p.y;
-        if (p.x > maxX)
-            maxX = p.x;
-        if (p.y > maxY)
-            maxY = p.y;
-    }
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-//# sourceMappingURL=matrix.js.map
-
-// ---- dist/geometry.js
-// ---------------------------------------------------------------- node transform
-/**
- * The node's effective affine transform, expressed around the WORLD origin
- * but pivoting on the node's own (untransformed) bbox center — so a pure
- * rotation/scale spins the node in place.
- *
- * Precedence: explicit `transform` first, else legacy `rotation`, else identity.
- * This is the single bridge between the old rotation-field scenes and the
- * new matrix model; every geometry op routes through it.
- */
-function nodeMatrix(node) {
-    const local = node.transform ?? (node.rotation ? compose({ angle: node.rotation }) : null);
-    if (!local || isIdentity(local))
-        return IDENTITY;
-    const c = bboxCenter(rawBBox(node));
-    // translate(c) · local · translate(-c)
-    return multiply(multiply(translation(c.x, c.y), local), translation(-c.x, -c.y));
-}
-/** True when the node has any non-identity transform. */
-function hasTransform(node) {
-    if (node.transform)
-        return !isIdentity(node.transform);
-    return !!node.rotation;
-}
-/** Map a world point into the node's local (untransformed) space. */
-function toLocalPoint(node, p) {
-    if (!hasTransform(node))
-        return p;
-    return applyToPoint(invert(nodeMatrix(node)), p);
-}
-// ---------------------------------------------------------------- basics
-function rotatePoint(p, c, angle) {
-    if (angle === 0)
-        return { x: p.x, y: p.y };
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const dx = p.x - c.x;
-    const dy = p.y - c.y;
-    return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
-}
-function bboxCenter(b) {
-    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-}
-function bboxCorners(b) {
-    return [
-        { x: b.x, y: b.y },
-        { x: b.x + b.w, y: b.y },
-        { x: b.x + b.w, y: b.y + b.h },
-        { x: b.x, y: b.y + b.h },
-    ];
-}
-function aabbOfPoints(pts) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of pts) {
-        if (p.x < minX)
-            minX = p.x;
-        if (p.y < minY)
-            minY = p.y;
-        if (p.x > maxX)
-            maxX = p.x;
-        if (p.y > maxY)
-            maxY = p.y;
-    }
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-// ---------------------------------------------------------------- bbox
-/**
- * The node's own local bounding box, IGNORING its transform.
- * For groups, this is the union of children's transformed AABBs (in the
- * group's local space), so a group box tightly wraps its contents.
- */
-function rawBBox(node) {
-    switch (node.type) {
-        case 'rect':
-        case 'ellipse':
-        case 'diamond':
-        case 'triangle':
-        case 'image':
-        case 'text':
-            return { x: node.x, y: node.y, w: node.w, h: node.h };
-        case 'line': {
-            const x = Math.min(node.x1, node.x2);
-            const y = Math.min(node.y1, node.y2);
-            return { x, y, w: Math.abs(node.x2 - node.x1), h: Math.abs(node.y2 - node.y1) };
-        }
-        case 'path':
-            return node.points.length === 0
-                ? { x: 0, y: 0, w: 0, h: 0 }
-                : aabbOfPoints(node.points);
-        case 'group':
-            return unionBBox(node.children.map(getAABB));
-    }
-}
-/**
- * Local bounding box. Kept as an alias of rawBBox for backward compatibility
- * (callers that predate the transform model). Prefer rawBBox for the untransformed
- * box and getAABB for the world-space, transform-aware box.
- */
-function getBBox(node) {
-    return rawBBox(node);
-}
-/** World-space axis-aligned bounding box, including the node's full transform. */
-function getAABB(node) {
-    const box = rawBBox(node);
-    if (!hasTransform(node))
-        return box;
-    return transformBox(nodeMatrix(node), box);
-}
-function unionBBox(boxes) {
-    if (boxes.length === 0)
-        return { x: 0, y: 0, w: 0, h: 0 };
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const b of boxes) {
-        if (b.x < minX)
-            minX = b.x;
-        if (b.y < minY)
-            minY = b.y;
-        if (b.x + b.w > maxX)
-            maxX = b.x + b.w;
-        if (b.y + b.h > maxY)
-            maxY = b.y + b.h;
-    }
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-function bboxIntersects(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
-function pointInBBox(p, b, pad = 0) {
-    return (p.x >= b.x - pad && p.x <= b.x + b.w + pad &&
-        p.y >= b.y - pad && p.y <= b.y + b.h + pad);
-}
-// ---------------------------------------------------------------- polygons
-function diamondPoints(b) {
-    return [
-        { x: b.x + b.w / 2, y: b.y },
-        { x: b.x + b.w, y: b.y + b.h / 2 },
-        { x: b.x + b.w / 2, y: b.y + b.h },
-        { x: b.x, y: b.y + b.h / 2 },
-    ];
-}
-function trianglePoints(b, flipY = false) {
-    return flipY
-        ? [
-            { x: b.x, y: b.y },
-            { x: b.x + b.w, y: b.y },
-            { x: b.x + b.w / 2, y: b.y + b.h },
-        ]
-        : [
-            { x: b.x + b.w / 2, y: b.y },
-            { x: b.x + b.w, y: b.y + b.h },
-            { x: b.x, y: b.y + b.h },
-        ];
-}
-function pointInPolygon(p, poly) {
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const a = poly[i];
-        const b = poly[j];
-        if (a.y > p.y !== b.y > p.y &&
-            p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
-            inside = !inside;
-        }
-    }
-    return inside;
-}
-function nearPolygonEdge(p, poly, tol) {
-    for (let i = 0; i < poly.length; i++) {
-        if (distToSegment(p, poly[i], poly[(i + 1) % poly.length]) <= tol)
-            return true;
-    }
-    return false;
-}
-// ---------------------------------------------------------------- transforms
-/** Translate a node (and its children) in place. */
-function translateNode(node, dx, dy) {
-    switch (node.type) {
-        case 'rect':
-        case 'ellipse':
-        case 'diamond':
-        case 'triangle':
-        case 'image':
-        case 'text':
-            node.x += dx;
-            node.y += dy;
-            break;
-        case 'line':
-            node.x1 += dx;
-            node.y1 += dy;
-            node.x2 += dx;
-            node.y2 += dy;
-            break;
-        case 'path':
-            for (const p of node.points) {
-                p.x += dx;
-                p.y += dy;
-            }
-            break;
-        case 'group':
-            for (const child of node.children)
-                translateNode(child, dx, dy);
-            break;
-    }
-}
-/**
- * Rescale `node` so that geometry expressed relative to `from` maps into `to`.
- * `node` should hold the ORIGINAL (pre-resize) geometry; it is mutated in place.
- * Text scales its fontSize; the engine re-measures w/h afterwards.
- */
-function scaleNodeInto(node, from, to) {
-    const sx = from.w === 0 ? 1 : to.w / from.w;
-    const sy = from.h === 0 ? 1 : to.h / from.h;
-    const mapX = (x) => to.x + (x - from.x) * sx;
-    const mapY = (y) => to.y + (y - from.y) * sy;
-    switch (node.type) {
-        case 'rect':
-        case 'ellipse':
-        case 'diamond':
-        case 'triangle':
-        case 'image': {
-            const nx = mapX(node.x);
-            const ny = mapY(node.y);
-            node.w = node.w * sx;
-            node.h = node.h * sy;
-            node.x = nx;
-            node.y = ny;
-            if (node.type === 'rect' && node.rx)
-                node.rx *= Math.min(sx, sy);
-            break;
-        }
-        case 'text': {
-            const nx = mapX(node.x);
-            const ny = mapY(node.y);
-            node.x = nx;
-            node.y = ny;
-            node.fontSize = Math.max(4, node.fontSize * sy);
-            node.w *= sx;
-            node.h *= sy;
-            break;
-        }
-        case 'line':
-            node.x1 = mapX(node.x1);
-            node.y1 = mapY(node.y1);
-            node.x2 = mapX(node.x2);
-            node.y2 = mapY(node.y2);
-            break;
-        case 'path':
-            for (const p of node.points) {
-                p.x = mapX(p.x);
-                p.y = mapY(p.y);
-            }
-            break;
-        case 'group':
-            for (const child of node.children)
-                scaleNodeInto(child, from, to);
-            break;
-    }
-}
-/** Mirror a node across a vertical (axis='h') or horizontal (axis='v') line. */
-function flipNode(node, axis, center) {
-    const fx = (x) => 2 * center.x - x;
-    const fy = (y) => 2 * center.y - y;
-    if (node.rotation)
-        node.rotation = -node.rotation;
-    switch (node.type) {
-        case 'rect':
-        case 'ellipse':
-        case 'diamond':
-        case 'text':
-            if (axis === 'h')
-                node.x = fx(node.x + node.w);
-            else
-                node.y = fy(node.y + node.h);
-            break;
-        case 'triangle':
-            if (axis === 'h')
-                node.x = fx(node.x + node.w);
-            else {
-                node.y = fy(node.y + node.h);
-                node.flipY = !node.flipY;
-            }
-            break;
-        case 'image':
-            if (axis === 'h') {
-                node.x = fx(node.x + node.w);
-                node.flipX = !node.flipX;
-            }
-            else {
-                node.y = fy(node.y + node.h);
-                node.flipY = !node.flipY;
-            }
-            break;
-        case 'line':
-            if (axis === 'h') {
-                node.x1 = fx(node.x1);
-                node.x2 = fx(node.x2);
-            }
-            else {
-                node.y1 = fy(node.y1);
-                node.y2 = fy(node.y2);
-            }
-            break;
-        case 'path':
-            for (const p of node.points) {
-                if (axis === 'h')
-                    p.x = fx(p.x);
-                else
-                    p.y = fy(p.y);
-            }
-            break;
-        case 'group':
-            for (const child of node.children)
-                flipNode(child, axis, center);
-            break;
-    }
-}
-// ---------------------------------------------------------------- hit testing
-function distToSegment(p, a, b) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    const cx = a.x + t * dx;
-    const cy = a.y + t * dy;
-    return Math.hypot(p.x - cx, p.y - cy);
-}
-/**
- * @param tolerance hit slop in world units (scale-aware value should be passed by caller)
- */
-function hitTestNode(node, point, tolerance) {
-    const p = toLocalPoint(node, point);
-    const tol = tolerance + node.style.strokeWidth / 2;
-    switch (node.type) {
-        case 'rect':
-        case 'image':
-        case 'text': {
-            const filled = node.type !== 'rect' || node.style.fill !== 'transparent';
-            const box = getBBox(node);
-            if (filled)
-                return pointInBBox(p, box, tol);
-            return nearPolygonEdge(p, bboxCorners(box), tol);
-        }
-        case 'ellipse': {
-            const cx = node.x + node.w / 2;
-            const cy = node.y + node.h / 2;
-            const rx = Math.max(node.w / 2, 0.001);
-            const ry = Math.max(node.h / 2, 0.001);
-            if (node.style.fill !== 'transparent') {
-                const rxOut = rx + tol, ryOut = ry + tol;
-                return ((p.x - cx) / rxOut) ** 2 + ((p.y - cy) / ryOut) ** 2 <= 1;
-            }
-            const outer = ((p.x - cx) / (rx + tol)) ** 2 + ((p.y - cy) / (ry + tol)) ** 2;
-            const rIn = Math.max(rx - tol, 0.001), ryIn = Math.max(ry - tol, 0.001);
-            const inner = ((p.x - cx) / rIn) ** 2 + ((p.y - cy) / ryIn) ** 2;
-            return outer <= 1 && inner >= 1;
-        }
-        case 'diamond': {
-            const poly = diamondPoints(getBBox(node));
-            if (node.style.fill !== 'transparent') {
-                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
-            }
-            return nearPolygonEdge(p, poly, tol);
-        }
-        case 'triangle': {
-            const poly = trianglePoints(getBBox(node), node.flipY);
-            if (node.style.fill !== 'transparent') {
-                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
-            }
-            return nearPolygonEdge(p, poly, tol);
-        }
-        case 'line':
-            return distToSegment(p, { x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }) <= tol;
-        case 'path': {
-            if (!pointInBBox(p, getBBox(node), tol))
-                return false;
-            const pts = node.points;
-            if (pts.length === 1)
-                return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol;
-            for (let i = 0; i < pts.length - 1; i++) {
-                if (distToSegment(p, pts[i], pts[i + 1]) <= tol)
-                    return true;
-            }
-            return false;
-        }
-        case 'group':
-            if (!pointInBBox(p, getBBox(node), tol))
-                return false;
-            return node.children.some((c) => hitTestNode(c, p, tolerance));
-    }
-}
-//# sourceMappingURL=geometry.js.map
-
-// ---- dist/render.js
-const LINE_HEIGHT = 1.3;
-// ---------------------------------------------------------------- text measure
-let measureCtx = null;
-function measureText(text, fontSize, fontFamily) {
-    if (!measureCtx) {
-        measureCtx = document.createElement('canvas').getContext('2d');
-    }
-    const lines = text.split('\n');
-    let w = fontSize * 0.5;
-    if (measureCtx) {
-        measureCtx.font = `${fontSize}px ${fontFamily}`;
-        for (const line of lines) {
-            w = Math.max(w, measureCtx.measureText(line).width);
-        }
-    }
-    return { w, h: Math.max(lines.length, 1) * fontSize * LINE_HEIGHT };
-}
-// ---------------------------------------------------------------- helpers
-function applyStrokeFill(ctx, node, draw) {
-    const { stroke, fill, strokeWidth } = node.style;
-    ctx.beginPath();
-    draw();
-    if (fill !== 'transparent') {
-        ctx.fillStyle = fill;
-        ctx.fill();
-    }
-    if (stroke !== 'transparent' && strokeWidth > 0) {
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = strokeWidth;
-        ctx.stroke();
-    }
-}
-/** Smooth polyline: quadratic curves through segment midpoints. */
-function tracePath(ctx, node) {
-    const pts = node.points;
-    if (pts.length === 0)
-        return;
-    ctx.moveTo(pts[0].x, pts[0].y);
-    if (pts.length === 1) {
-        ctx.lineTo(pts[0].x + 0.01, pts[0].y); // dot
-        return;
-    }
-    if (pts.length === 2) {
-        ctx.lineTo(pts[1].x, pts[1].y);
-        return;
-    }
-    for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i + 1].x) / 2;
-        const midY = (pts[i].y + pts[i + 1].y) / 2;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
-    }
-    const last = pts[pts.length - 1];
-    ctx.lineTo(last.x, last.y);
-}
-function traceRoundedRect(ctx, x, y, w, h, r) {
-    const rr = Math.min(r, w / 2, h / 2);
-    ctx.moveTo(x + rr, y);
-    ctx.arcTo(x + w, y, x + w, y + h, rr);
-    ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y + h, x, y, rr);
-    ctx.arcTo(x, y, x + w, y, rr);
-    ctx.closePath();
-}
-/** Arrowhead geometry for a line ending at (x2, y2). */
-function arrowHead(x1, y1, x2, y2, size) {
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-    const a = angle + Math.PI - Math.PI / 7;
-    const b = angle + Math.PI + Math.PI / 7;
-    return [
-        { x: x2 + Math.cos(a) * size, y: y2 + Math.sin(a) * size },
-        { x: x2 + Math.cos(b) * size, y: y2 + Math.sin(b) * size },
-    ];
-}
-function renderText(ctx, node) {
-    ctx.font = `${node.fontSize}px ${node.fontFamily}`;
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
-    const lines = node.text.split('\n');
-    const lh = node.fontSize * LINE_HEIGHT;
-    const pad = (lh - node.fontSize) / 2;
-    lines.forEach((line, i) => {
-        ctx.fillText(line, node.x, node.y + i * lh + pad);
-    });
-}
-function renderNode(ctx, node, images, options = {}) {
-    if (options.skipId && node.id === options.skipId)
-        return;
-    ctx.save();
-    ctx.globalAlpha *= node.style.opacity;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const m = nodeMatrix(node);
-    if (!isIdentity(m)) {
-        ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
-    }
-    switch (node.type) {
-        case 'path':
-            applyStrokeFill(ctx, node, () => tracePath(ctx, node));
-            break;
-        case 'rect':
-            applyStrokeFill(ctx, node, () => {
-                if (node.rx && node.rx > 0)
-                    traceRoundedRect(ctx, node.x, node.y, node.w, node.h, node.rx);
-                else
-                    ctx.rect(node.x, node.y, node.w, node.h);
-            });
-            break;
-        case 'ellipse':
-            applyStrokeFill(ctx, node, () => ctx.ellipse(node.x + node.w / 2, node.y + node.h / 2, Math.max(node.w / 2, 0), Math.max(node.h / 2, 0), 0, 0, Math.PI * 2));
-            break;
-        case 'diamond':
-            applyStrokeFill(ctx, node, () => {
-                const pts = diamondPoints(getBBox(node));
-                ctx.moveTo(pts[0].x, pts[0].y);
-                for (let i = 1; i < pts.length; i++)
-                    ctx.lineTo(pts[i].x, pts[i].y);
-                ctx.closePath();
-            });
-            break;
-        case 'triangle':
-            applyStrokeFill(ctx, node, () => {
-                const pts = trianglePoints(getBBox(node), node.flipY);
-                ctx.moveTo(pts[0].x, pts[0].y);
-                for (let i = 1; i < pts.length; i++)
-                    ctx.lineTo(pts[i].x, pts[i].y);
-                ctx.closePath();
-            });
-            break;
-        case 'line':
-            applyStrokeFill(ctx, node, () => {
-                ctx.moveTo(node.x1, node.y1);
-                ctx.lineTo(node.x2, node.y2);
-                if (node.arrow) {
-                    const size = Math.max(10, node.style.strokeWidth * 3.2);
-                    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
-                    ctx.moveTo(a.x, a.y);
-                    ctx.lineTo(node.x2, node.y2);
-                    ctx.lineTo(b.x, b.y);
-                }
-            });
-            break;
-        case 'text':
-            renderText(ctx, node);
-            break;
-        case 'image': {
-            const img = images.get(node.src);
-            if (img && img.complete && img.naturalWidth > 0) {
-                if (node.flipX || node.flipY) {
-                    const cx = node.x + node.w / 2;
-                    const cy = node.y + node.h / 2;
-                    ctx.translate(cx, cy);
-                    ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
-                    ctx.translate(-cx, -cy);
-                }
-                ctx.drawImage(img, node.x, node.y, node.w, node.h);
-            }
-            else {
-                ctx.fillStyle = 'rgba(0,0,0,0.06)';
-                ctx.fillRect(node.x, node.y, node.w, node.h);
-                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 4]);
-                ctx.strokeRect(node.x, node.y, node.w, node.h);
-                ctx.setLineDash([]);
-            }
-            break;
-        }
-        case 'group':
-            for (const child of node.children)
-                renderNode(ctx, child, images, options);
-            break;
-    }
-    ctx.restore();
-}
-function renderScene(ctx, nodes, images, options = {}) {
-    for (const node of nodes)
-        renderNode(ctx, node, images, options);
-}
-//# sourceMappingURL=render.js.map
-
-// ---- dist/svg.js
-const fmt = (n) => String(Math.round(n * 100) / 100);
-function escapeXML(s) {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-function styleAttrs(node) {
-    const { stroke, fill, strokeWidth, opacity } = node.style;
-    const parts = [
-        `fill="${fill === 'transparent' ? 'none' : fill}"`,
-        `stroke="${stroke === 'transparent' ? 'none' : stroke}"`,
-        `stroke-width="${fmt(strokeWidth)}"`,
-        'stroke-linecap="round"',
-        'stroke-linejoin="round"',
-    ];
-    if (opacity !== 1)
-        parts.push(`opacity="${fmt(opacity)}"`);
-    return parts.join(' ');
-}
-function rotationAttr(node) {
-    const m = nodeMatrix(node);
-    if (isIdentity(m))
-        return '';
-    return ` transform="${toCSS(m)}"`;
-}
-function pathD(node) {
-    const pts = node.points;
-    if (pts.length === 0)
-        return '';
-    let d = `M ${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
-    if (pts.length === 1)
-        return d + ` L ${fmt(pts[0].x + 0.01)} ${fmt(pts[0].y)}`;
-    if (pts.length === 2)
-        return d + ` L ${fmt(pts[1].x)} ${fmt(pts[1].y)}`;
-    for (let i = 1; i < pts.length - 1; i++) {
-        const mx = (pts[i].x + pts[i + 1].x) / 2;
-        const my = (pts[i].y + pts[i + 1].y) / 2;
-        d += ` Q ${fmt(pts[i].x)} ${fmt(pts[i].y)} ${fmt(mx)} ${fmt(my)}`;
-    }
-    const last = pts[pts.length - 1];
-    return d + ` L ${fmt(last.x)} ${fmt(last.y)}`;
-}
-function lineSVG(node) {
-    const attr = rotationAttr(node);
-    if (!node.arrow) {
-        return `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}${attr}/>`;
-    }
-    const size = Math.max(10, node.style.strokeWidth * 3.2);
-    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
-    const line = `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}/>`;
-    const head = `<polyline points="${fmt(a.x)},${fmt(a.y)} ${fmt(node.x2)},${fmt(node.y2)} ${fmt(b.x)},${fmt(b.y)}" ${styleAttrs(node)}/>`;
-    return `<g${attr}>${line}${head}</g>`;
-}
-function polygonSVG(node, pts) {
-    const points = pts.map((p) => `${fmt(p.x)},${fmt(p.y)}`).join(' ');
-    return `<polygon points="${points}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
-}
-function nodeToSVG(node) {
-    switch (node.type) {
-        case 'path':
-            return `<path d="${pathD(node)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
-        case 'rect':
-            return `<rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"${node.rx ? ` rx="${fmt(node.rx)}"` : ''} ${styleAttrs(node)}${rotationAttr(node)}/>`;
-        case 'ellipse':
-            return `<ellipse cx="${fmt(node.x + node.w / 2)}" cy="${fmt(node.y + node.h / 2)}" rx="${fmt(node.w / 2)}" ry="${fmt(node.h / 2)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
-        case 'diamond':
-            return polygonSVG(node, diamondPoints(getBBox(node)));
-        case 'triangle':
-            return polygonSVG(node, trianglePoints(getBBox(node), node.flipY));
-        case 'line':
-            return lineSVG(node);
-        case 'text': {
-            const lh = node.fontSize * LINE_HEIGHT;
-            const pad = (lh - node.fontSize) / 2;
-            const color = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
-            const tspans = node.text
-                .split('\n')
-                .map((line, i) => `<tspan x="${fmt(node.x)}" y="${fmt(node.y + i * lh + pad)}">${escapeXML(line) || ' '}</tspan>`)
-                .join('');
-            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
-            return `<text font-family="${escapeXML(node.fontFamily)}" font-size="${fmt(node.fontSize)}" fill="${color}" dominant-baseline="text-before-edge"${op}${rotationAttr(node)}>${tspans}</text>`;
-        }
-        case 'image': {
-            const sx = node.flipX ? -1 : 1;
-            const sy = node.flipY ? -1 : 1;
-            const flip = node.flipX || node.flipY
-                ? ` transform="translate(${fmt(node.x + node.w / 2)} ${fmt(node.y + node.h / 2)}) scale(${sx} ${sy}) translate(${fmt(-(node.x + node.w / 2))} ${fmt(-(node.y + node.h / 2))})"`
-                : '';
-            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
-            const inner = `<image x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}" href="${escapeXML(node.src)}" preserveAspectRatio="none"${op}${flip}/>`;
-            const rot = rotationAttr(node);
-            return rot ? `<g${rot}>${inner}</g>` : inner;
-        }
-        case 'group': {
-            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
-            return `<g${op}${rotationAttr(node)}>${node.children.map(nodeToSVG).join('')}</g>`;
-        }
-    }
-}
-function sceneToSVG(nodes, options = {}) {
-    const padding = options.padding ?? 24;
-    const box = nodes.length > 0 ? unionBBox(nodes.map(getAABB)) : { x: 0, y: 0, w: 100, h: 100 };
-    const x = box.x - padding;
-    const y = box.y - padding;
-    const w = box.w + padding * 2;
-    const h = box.h + padding * 2;
-    const bg = options.background
-        ? `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="${options.background}"/>`
-        : '';
-    return (`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(x)} ${fmt(y)} ${fmt(w)} ${fmt(h)}" width="${fmt(w)}" height="${fmt(h)}">` +
-        bg +
-        nodes.map(nodeToSVG).join('') +
-        `</svg>`);
-}
-//# sourceMappingURL=svg.js.map
-
-// ---- dist/core.js
+// ---- C:\dev\dohwa\dist\core\core.js
 // ---------------------------------------------------------------- emitter
 class Emitter {
     constructor() {
@@ -1223,128 +411,7 @@ class History {
 }
 //# sourceMappingURL=core.js.map
 
-// ---- dist/spatial.js
-const MAX_ITEMS = 8; // split threshold
-const MAX_DEPTH = 8;
-class Quadtree {
-    constructor(bounds, depth = 0) {
-        this.items = [];
-        this.nodes = null;
-        this.bounds = bounds;
-        this.depth = depth;
-    }
-    clear() {
-        this.items = [];
-        this.nodes = null;
-    }
-    insert(item) {
-        if (this.nodes) {
-            const i = this.quadrantFor(item.box);
-            if (i !== -1) {
-                this.nodes[i].insert(item);
-                return;
-            }
-        }
-        this.items.push(item);
-        if (this.items.length > MAX_ITEMS && this.depth < MAX_DEPTH) {
-            if (!this.nodes)
-                this.split();
-            // redistribute items that fit cleanly into a child quadrant
-            const kept = [];
-            for (const it of this.items) {
-                const i = this.quadrantFor(it.box);
-                if (i !== -1 && this.nodes)
-                    this.nodes[i].insert(it);
-                else
-                    kept.push(it);
-            }
-            this.items = kept;
-        }
-    }
-    /** All ids whose box intersects the query box. */
-    queryBox(box, out = new Set()) {
-        if (!bboxIntersects(this.bounds, box))
-            return out;
-        for (const it of this.items) {
-            if (bboxIntersects(it.box, box))
-                out.add(it.id);
-        }
-        if (this.nodes) {
-            for (const child of this.nodes)
-                child.queryBox(box, out);
-        }
-        return out;
-    }
-    /** All ids whose box contains the point (with optional padding). */
-    queryPoint(x, y, pad = 0, out = new Set()) {
-        const p = { x, y };
-        if (!pointInBBox(p, this.bounds, pad))
-            return out;
-        for (const it of this.items) {
-            if (pointInBBox(p, it.box, pad))
-                out.add(it.id);
-        }
-        if (this.nodes) {
-            for (const child of this.nodes)
-                child.queryPoint(x, y, pad, out);
-        }
-        return out;
-    }
-    split() {
-        const { x, y, w, h } = this.bounds;
-        const hw = w / 2;
-        const hh = h / 2;
-        const d = this.depth + 1;
-        this.nodes = [
-            new Quadtree({ x, y, w: hw, h: hh }, d), // NW
-            new Quadtree({ x: x + hw, y, w: hw, h: hh }, d), // NE
-            new Quadtree({ x, y: y + hh, w: hw, h: hh }, d), // SW
-            new Quadtree({ x: x + hw, y: y + hh, w: hw, h: hh }, d), // SE
-        ];
-    }
-    /** Which child quadrant fully contains the box, or -1 if it straddles. */
-    quadrantFor(box) {
-        if (!this.nodes)
-            return -1;
-        for (let i = 0; i < 4; i++) {
-            const b = this.nodes[i].bounds;
-            if (box.x >= b.x && box.x + box.w <= b.x + b.w &&
-                box.y >= b.y && box.y + box.h <= b.y + b.h) {
-                return i;
-            }
-        }
-        return -1;
-    }
-    /** Build an index sized to fit all items (with a margin). */
-    static build(items, margin = 100) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const it of items) {
-            minX = Math.min(minX, it.box.x);
-            minY = Math.min(minY, it.box.y);
-            maxX = Math.max(maxX, it.box.x + it.box.w);
-            maxY = Math.max(maxY, it.box.y + it.box.h);
-        }
-        if (!Number.isFinite(minX)) {
-            minX = 0;
-            minY = 0;
-            maxX = 1;
-            maxY = 1;
-        }
-        const bounds = {
-            x: minX - margin,
-            y: minY - margin,
-            w: maxX - minX + margin * 2,
-            h: maxY - minY + margin * 2,
-        };
-        const tree = new Quadtree(bounds);
-        for (const it of items)
-            tree.insert(it);
-        return tree;
-    }
-}
-//# sourceMappingURL=spatial.js.map
-
-// ---- dist/dohwa.js
+// ---- C:\dev\dohwa\dist\core\dohwa.js
 let idCounter = 0;
 function genId() {
     idCounter += 1;
@@ -2801,7 +1868,812 @@ class Dohwa {
 }
 //# sourceMappingURL=dohwa.js.map
 
-// ---- dist/cache.js
+// ---- C:\dev\dohwa\dist\geometry\matrix.js
+const IDENTITY = [1, 0, 0, 1, 0, 0];
+function multiply(m1, m2) {
+    const [a1, b1, c1, d1, e1, f1] = m1;
+    const [a2, b2, c2, d2, e2, f2] = m2;
+    return [
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    ];
+}
+/** Compose a chain left-to-right: composeAll([A, B, C]) applies A, then B, then C. */
+function composeAll(matrices) {
+    let acc = IDENTITY;
+    for (const m of matrices)
+        acc = multiply(acc, m);
+    return acc;
+}
+function translation(x, y) {
+    return [1, 0, 0, 1, x, y];
+}
+function scaling(sx, sy = sx) {
+    return [sx, 0, 0, sy, 0, 0];
+}
+function rotation(angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return [cos, sin, -sin, cos, 0, 0];
+}
+/** Skew given in radians. */
+function skewing(skewX, skewY) {
+    return [1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0];
+}
+function compose(parts) {
+    const { translateX = 0, translateY = 0, angle = 0, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0, } = parts;
+    let m = translation(translateX, translateY);
+    if (angle !== 0)
+        m = multiply(m, rotation(angle));
+    if (skewX !== 0 || skewY !== 0)
+        m = multiply(m, skewing(skewX, skewY));
+    if (scaleX !== 1 || scaleY !== 1)
+        m = multiply(m, scaling(scaleX, scaleY));
+    return m;
+}
+function applyToPoint(m, p) {
+    return {
+        x: m[0] * p.x + m[2] * p.y + m[4],
+        y: m[1] * p.x + m[3] * p.y + m[5],
+    };
+}
+function determinant(m) {
+    return m[0] * m[3] - m[1] * m[2];
+}
+function invert(m) {
+    const det = determinant(m);
+    if (Math.abs(det) < 1e-12)
+        return IDENTITY; // degenerate — avoid NaN blowups
+    const [a, b, c, d, e, f] = m;
+    const invDet = 1 / det;
+    return [
+        d * invDet,
+        -b * invDet,
+        -c * invDet,
+        a * invDet,
+        (c * f - d * e) * invDet,
+        (b * e - a * f) * invDet,
+    ];
+}
+function isIdentity(m) {
+    return (m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0);
+}
+function decompose(m) {
+    const [a, b, c, d, e, f] = m;
+    const angle = Math.atan2(b, a);
+    const denom = a * a + b * b;
+    const scaleX = Math.sqrt(denom);
+    const skewX = Math.atan2(a * c + b * d, denom);
+    const scaleY = determinant(m) / (scaleX || 1);
+    return { translateX: e, translateY: f, angle, scaleX, scaleY, skewX };
+}
+/** Format for CSS/Canvas: "matrix(a,b,c,d,e,f)". */
+function toCSS(m) {
+    return `matrix(${m.map((n) => Math.round(n * 1e6) / 1e6).join(',')})`;
+}
+/** Transform an axis-aligned box, returning the AABB of the 4 mapped corners. */
+function transformBBox(m, box) {
+    const corners = [
+        applyToPoint(m, { x: box.x, y: box.y }),
+        applyToPoint(m, { x: box.x + box.w, y: box.y }),
+        applyToPoint(m, { x: box.x + box.w, y: box.y + box.h }),
+        applyToPoint(m, { x: box.x, y: box.y + box.h }),
+    ];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of corners) {
+        if (p.x < minX)
+            minX = p.x;
+        if (p.y < minY)
+            minY = p.y;
+        if (p.x > maxX)
+            maxX = p.x;
+        if (p.y > maxY)
+            maxY = p.y;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+//# sourceMappingURL=matrix.js.map
+
+// ---- C:\dev\dohwa\dist\geometry\geometry.js
+// ---------------------------------------------------------------- node transform
+/**
+ * The node's effective affine transform, expressed around the WORLD origin
+ * but pivoting on the node's own (untransformed) bbox center — so a pure
+ * rotation/scale spins the node in place.
+ *
+ * Precedence: explicit `transform` first, else legacy `rotation`, else identity.
+ * This is the single bridge between the old rotation-field scenes and the
+ * new matrix model; every geometry op routes through it.
+ */
+function nodeMatrix(node) {
+    const local = node.transform ?? (node.rotation ? compose({ angle: node.rotation }) : null);
+    if (!local || isIdentity(local))
+        return IDENTITY;
+    const c = bboxCenter(rawBBox(node));
+    // translate(c) · local · translate(-c)
+    return multiply(multiply(translation(c.x, c.y), local), translation(-c.x, -c.y));
+}
+/** True when the node has any non-identity transform. */
+function hasTransform(node) {
+    if (node.transform)
+        return !isIdentity(node.transform);
+    return !!node.rotation;
+}
+/** Map a world point into the node's local (untransformed) space. */
+function toLocalPoint(node, p) {
+    if (!hasTransform(node))
+        return p;
+    return applyToPoint(invert(nodeMatrix(node)), p);
+}
+// ---------------------------------------------------------------- basics
+function rotatePoint(p, c, angle) {
+    if (angle === 0)
+        return { x: p.x, y: p.y };
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+function bboxCenter(b) {
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+function bboxCorners(b) {
+    return [
+        { x: b.x, y: b.y },
+        { x: b.x + b.w, y: b.y },
+        { x: b.x + b.w, y: b.y + b.h },
+        { x: b.x, y: b.y + b.h },
+    ];
+}
+function aabbOfPoints(pts) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+        if (p.x < minX)
+            minX = p.x;
+        if (p.y < minY)
+            minY = p.y;
+        if (p.x > maxX)
+            maxX = p.x;
+        if (p.y > maxY)
+            maxY = p.y;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+// ---------------------------------------------------------------- bbox
+/**
+ * The node's own local bounding box, IGNORING its transform.
+ * For groups, this is the union of children's transformed AABBs (in the
+ * group's local space), so a group box tightly wraps its contents.
+ */
+function rawBBox(node) {
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image':
+        case 'text':
+            return { x: node.x, y: node.y, w: node.w, h: node.h };
+        case 'line': {
+            const x = Math.min(node.x1, node.x2);
+            const y = Math.min(node.y1, node.y2);
+            return { x, y, w: Math.abs(node.x2 - node.x1), h: Math.abs(node.y2 - node.y1) };
+        }
+        case 'path':
+            return node.points.length === 0
+                ? { x: 0, y: 0, w: 0, h: 0 }
+                : aabbOfPoints(node.points);
+        case 'group':
+            return unionBBox(node.children.map(getAABB));
+    }
+}
+/**
+ * Local bounding box. Kept as an alias of rawBBox for backward compatibility
+ * (callers that predate the transform model). Prefer rawBBox for the untransformed
+ * box and getAABB for the world-space, transform-aware box.
+ */
+function getBBox(node) {
+    return rawBBox(node);
+}
+/** World-space axis-aligned bounding box, including the node's full transform. */
+function getAABB(node) {
+    const box = rawBBox(node);
+    if (!hasTransform(node))
+        return box;
+    return transformBox(nodeMatrix(node), box);
+}
+function unionBBox(boxes) {
+    if (boxes.length === 0)
+        return { x: 0, y: 0, w: 0, h: 0 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const b of boxes) {
+        if (b.x < minX)
+            minX = b.x;
+        if (b.y < minY)
+            minY = b.y;
+        if (b.x + b.w > maxX)
+            maxX = b.x + b.w;
+        if (b.y + b.h > maxY)
+            maxY = b.y + b.h;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+function bboxIntersects(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function pointInBBox(p, b, pad = 0) {
+    return (p.x >= b.x - pad && p.x <= b.x + b.w + pad &&
+        p.y >= b.y - pad && p.y <= b.y + b.h + pad);
+}
+// ---------------------------------------------------------------- polygons
+function diamondPoints(b) {
+    return [
+        { x: b.x + b.w / 2, y: b.y },
+        { x: b.x + b.w, y: b.y + b.h / 2 },
+        { x: b.x + b.w / 2, y: b.y + b.h },
+        { x: b.x, y: b.y + b.h / 2 },
+    ];
+}
+function trianglePoints(b, flipY = false) {
+    return flipY
+        ? [
+            { x: b.x, y: b.y },
+            { x: b.x + b.w, y: b.y },
+            { x: b.x + b.w / 2, y: b.y + b.h },
+        ]
+        : [
+            { x: b.x + b.w / 2, y: b.y },
+            { x: b.x + b.w, y: b.y + b.h },
+            { x: b.x, y: b.y + b.h },
+        ];
+}
+function pointInPolygon(p, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i];
+        const b = poly[j];
+        if (a.y > p.y !== b.y > p.y &&
+            p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+function nearPolygonEdge(p, poly, tol) {
+    for (let i = 0; i < poly.length; i++) {
+        if (distToSegment(p, poly[i], poly[(i + 1) % poly.length]) <= tol)
+            return true;
+    }
+    return false;
+}
+// ---------------------------------------------------------------- transforms
+/** Translate a node (and its children) in place. */
+function translateNode(node, dx, dy) {
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image':
+        case 'text':
+            node.x += dx;
+            node.y += dy;
+            break;
+        case 'line':
+            node.x1 += dx;
+            node.y1 += dy;
+            node.x2 += dx;
+            node.y2 += dy;
+            break;
+        case 'path':
+            for (const p of node.points) {
+                p.x += dx;
+                p.y += dy;
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                translateNode(child, dx, dy);
+            break;
+    }
+}
+/**
+ * Rescale `node` so that geometry expressed relative to `from` maps into `to`.
+ * `node` should hold the ORIGINAL (pre-resize) geometry; it is mutated in place.
+ * Text scales its fontSize; the engine re-measures w/h afterwards.
+ */
+function scaleNodeInto(node, from, to) {
+    const sx = from.w === 0 ? 1 : to.w / from.w;
+    const sy = from.h === 0 ? 1 : to.h / from.h;
+    const mapX = (x) => to.x + (x - from.x) * sx;
+    const mapY = (y) => to.y + (y - from.y) * sy;
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image': {
+            const nx = mapX(node.x);
+            const ny = mapY(node.y);
+            node.w = node.w * sx;
+            node.h = node.h * sy;
+            node.x = nx;
+            node.y = ny;
+            if (node.type === 'rect' && node.rx)
+                node.rx *= Math.min(sx, sy);
+            break;
+        }
+        case 'text': {
+            const nx = mapX(node.x);
+            const ny = mapY(node.y);
+            node.x = nx;
+            node.y = ny;
+            node.fontSize = Math.max(4, node.fontSize * sy);
+            node.w *= sx;
+            node.h *= sy;
+            break;
+        }
+        case 'line':
+            node.x1 = mapX(node.x1);
+            node.y1 = mapY(node.y1);
+            node.x2 = mapX(node.x2);
+            node.y2 = mapY(node.y2);
+            break;
+        case 'path':
+            for (const p of node.points) {
+                p.x = mapX(p.x);
+                p.y = mapY(p.y);
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                scaleNodeInto(child, from, to);
+            break;
+    }
+}
+/** Mirror a node across a vertical (axis='h') or horizontal (axis='v') line. */
+function flipNode(node, axis, center) {
+    const fx = (x) => 2 * center.x - x;
+    const fy = (y) => 2 * center.y - y;
+    if (node.rotation)
+        node.rotation = -node.rotation;
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'text':
+            if (axis === 'h')
+                node.x = fx(node.x + node.w);
+            else
+                node.y = fy(node.y + node.h);
+            break;
+        case 'triangle':
+            if (axis === 'h')
+                node.x = fx(node.x + node.w);
+            else {
+                node.y = fy(node.y + node.h);
+                node.flipY = !node.flipY;
+            }
+            break;
+        case 'image':
+            if (axis === 'h') {
+                node.x = fx(node.x + node.w);
+                node.flipX = !node.flipX;
+            }
+            else {
+                node.y = fy(node.y + node.h);
+                node.flipY = !node.flipY;
+            }
+            break;
+        case 'line':
+            if (axis === 'h') {
+                node.x1 = fx(node.x1);
+                node.x2 = fx(node.x2);
+            }
+            else {
+                node.y1 = fy(node.y1);
+                node.y2 = fy(node.y2);
+            }
+            break;
+        case 'path':
+            for (const p of node.points) {
+                if (axis === 'h')
+                    p.x = fx(p.x);
+                else
+                    p.y = fy(p.y);
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                flipNode(child, axis, center);
+            break;
+    }
+}
+// ---------------------------------------------------------------- hit testing
+function distToSegment(p, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + t * dx;
+    const cy = a.y + t * dy;
+    return Math.hypot(p.x - cx, p.y - cy);
+}
+/**
+ * @param tolerance hit slop in world units (scale-aware value should be passed by caller)
+ */
+function hitTestNode(node, point, tolerance) {
+    const p = toLocalPoint(node, point);
+    const tol = tolerance + node.style.strokeWidth / 2;
+    switch (node.type) {
+        case 'rect':
+        case 'image':
+        case 'text': {
+            const filled = node.type !== 'rect' || node.style.fill !== 'transparent';
+            const box = getBBox(node);
+            if (filled)
+                return pointInBBox(p, box, tol);
+            return nearPolygonEdge(p, bboxCorners(box), tol);
+        }
+        case 'ellipse': {
+            const cx = node.x + node.w / 2;
+            const cy = node.y + node.h / 2;
+            const rx = Math.max(node.w / 2, 0.001);
+            const ry = Math.max(node.h / 2, 0.001);
+            if (node.style.fill !== 'transparent') {
+                const rxOut = rx + tol, ryOut = ry + tol;
+                return ((p.x - cx) / rxOut) ** 2 + ((p.y - cy) / ryOut) ** 2 <= 1;
+            }
+            const outer = ((p.x - cx) / (rx + tol)) ** 2 + ((p.y - cy) / (ry + tol)) ** 2;
+            const rIn = Math.max(rx - tol, 0.001), ryIn = Math.max(ry - tol, 0.001);
+            const inner = ((p.x - cx) / rIn) ** 2 + ((p.y - cy) / ryIn) ** 2;
+            return outer <= 1 && inner >= 1;
+        }
+        case 'diamond': {
+            const poly = diamondPoints(getBBox(node));
+            if (node.style.fill !== 'transparent') {
+                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
+            }
+            return nearPolygonEdge(p, poly, tol);
+        }
+        case 'triangle': {
+            const poly = trianglePoints(getBBox(node), node.flipY);
+            if (node.style.fill !== 'transparent') {
+                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
+            }
+            return nearPolygonEdge(p, poly, tol);
+        }
+        case 'line':
+            return distToSegment(p, { x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }) <= tol;
+        case 'path': {
+            if (!pointInBBox(p, getBBox(node), tol))
+                return false;
+            const pts = node.points;
+            if (pts.length === 1)
+                return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol;
+            for (let i = 0; i < pts.length - 1; i++) {
+                if (distToSegment(p, pts[i], pts[i + 1]) <= tol)
+                    return true;
+            }
+            return false;
+        }
+        case 'group':
+            if (!pointInBBox(p, getBBox(node), tol))
+                return false;
+            return node.children.some((c) => hitTestNode(c, p, tolerance));
+    }
+}
+//# sourceMappingURL=geometry.js.map
+
+// ---- C:\dev\dohwa\dist\geometry\spatial.js
+const MAX_ITEMS = 8; // split threshold
+const MAX_DEPTH = 8;
+class Quadtree {
+    constructor(bounds, depth = 0) {
+        this.items = [];
+        this.nodes = null;
+        this.bounds = bounds;
+        this.depth = depth;
+    }
+    clear() {
+        this.items = [];
+        this.nodes = null;
+    }
+    insert(item) {
+        if (this.nodes) {
+            const i = this.quadrantFor(item.box);
+            if (i !== -1) {
+                this.nodes[i].insert(item);
+                return;
+            }
+        }
+        this.items.push(item);
+        if (this.items.length > MAX_ITEMS && this.depth < MAX_DEPTH) {
+            if (!this.nodes)
+                this.split();
+            // redistribute items that fit cleanly into a child quadrant
+            const kept = [];
+            for (const it of this.items) {
+                const i = this.quadrantFor(it.box);
+                if (i !== -1 && this.nodes)
+                    this.nodes[i].insert(it);
+                else
+                    kept.push(it);
+            }
+            this.items = kept;
+        }
+    }
+    /** All ids whose box intersects the query box. */
+    queryBox(box, out = new Set()) {
+        if (!bboxIntersects(this.bounds, box))
+            return out;
+        for (const it of this.items) {
+            if (bboxIntersects(it.box, box))
+                out.add(it.id);
+        }
+        if (this.nodes) {
+            for (const child of this.nodes)
+                child.queryBox(box, out);
+        }
+        return out;
+    }
+    /** All ids whose box contains the point (with optional padding). */
+    queryPoint(x, y, pad = 0, out = new Set()) {
+        const p = { x, y };
+        if (!pointInBBox(p, this.bounds, pad))
+            return out;
+        for (const it of this.items) {
+            if (pointInBBox(p, it.box, pad))
+                out.add(it.id);
+        }
+        if (this.nodes) {
+            for (const child of this.nodes)
+                child.queryPoint(x, y, pad, out);
+        }
+        return out;
+    }
+    split() {
+        const { x, y, w, h } = this.bounds;
+        const hw = w / 2;
+        const hh = h / 2;
+        const d = this.depth + 1;
+        this.nodes = [
+            new Quadtree({ x, y, w: hw, h: hh }, d), // NW
+            new Quadtree({ x: x + hw, y, w: hw, h: hh }, d), // NE
+            new Quadtree({ x, y: y + hh, w: hw, h: hh }, d), // SW
+            new Quadtree({ x: x + hw, y: y + hh, w: hw, h: hh }, d), // SE
+        ];
+    }
+    /** Which child quadrant fully contains the box, or -1 if it straddles. */
+    quadrantFor(box) {
+        if (!this.nodes)
+            return -1;
+        for (let i = 0; i < 4; i++) {
+            const b = this.nodes[i].bounds;
+            if (box.x >= b.x && box.x + box.w <= b.x + b.w &&
+                box.y >= b.y && box.y + box.h <= b.y + b.h) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    /** Build an index sized to fit all items (with a margin). */
+    static build(items, margin = 100) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const it of items) {
+            minX = Math.min(minX, it.box.x);
+            minY = Math.min(minY, it.box.y);
+            maxX = Math.max(maxX, it.box.x + it.box.w);
+            maxY = Math.max(maxY, it.box.y + it.box.h);
+        }
+        if (!Number.isFinite(minX)) {
+            minX = 0;
+            minY = 0;
+            maxX = 1;
+            maxY = 1;
+        }
+        const bounds = {
+            x: minX - margin,
+            y: minY - margin,
+            w: maxX - minX + margin * 2,
+            h: maxY - minY + margin * 2,
+        };
+        const tree = new Quadtree(bounds);
+        for (const it of items)
+            tree.insert(it);
+        return tree;
+    }
+}
+//# sourceMappingURL=spatial.js.map
+
+// ---- C:\dev\dohwa\dist\render\render.js
+const LINE_HEIGHT = 1.3;
+// ---------------------------------------------------------------- text measure
+let measureCtx = null;
+function measureText(text, fontSize, fontFamily) {
+    if (!measureCtx) {
+        measureCtx = document.createElement('canvas').getContext('2d');
+    }
+    const lines = text.split('\n');
+    let w = fontSize * 0.5;
+    if (measureCtx) {
+        measureCtx.font = `${fontSize}px ${fontFamily}`;
+        for (const line of lines) {
+            w = Math.max(w, measureCtx.measureText(line).width);
+        }
+    }
+    return { w, h: Math.max(lines.length, 1) * fontSize * LINE_HEIGHT };
+}
+// ---------------------------------------------------------------- helpers
+function applyStrokeFill(ctx, node, draw) {
+    const { stroke, fill, strokeWidth } = node.style;
+    ctx.beginPath();
+    draw();
+    if (fill !== 'transparent') {
+        ctx.fillStyle = fill;
+        ctx.fill();
+    }
+    if (stroke !== 'transparent' && strokeWidth > 0) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = strokeWidth;
+        ctx.stroke();
+    }
+}
+/** Smooth polyline: quadratic curves through segment midpoints. */
+function tracePath(ctx, node) {
+    const pts = node.points;
+    if (pts.length === 0)
+        return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 1) {
+        ctx.lineTo(pts[0].x + 0.01, pts[0].y); // dot
+        return;
+    }
+    if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+        return;
+    }
+    for (let i = 1; i < pts.length - 1; i++) {
+        const midX = (pts[i].x + pts[i + 1].x) / 2;
+        const midY = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+    }
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x, last.y);
+}
+function traceRoundedRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+}
+/** Arrowhead geometry for a line ending at (x2, y2). */
+function arrowHead(x1, y1, x2, y2, size) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const a = angle + Math.PI - Math.PI / 7;
+    const b = angle + Math.PI + Math.PI / 7;
+    return [
+        { x: x2 + Math.cos(a) * size, y: y2 + Math.sin(a) * size },
+        { x: x2 + Math.cos(b) * size, y: y2 + Math.sin(b) * size },
+    ];
+}
+function renderText(ctx, node) {
+    ctx.font = `${node.fontSize}px ${node.fontFamily}`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
+    const lines = node.text.split('\n');
+    const lh = node.fontSize * LINE_HEIGHT;
+    const pad = (lh - node.fontSize) / 2;
+    lines.forEach((line, i) => {
+        ctx.fillText(line, node.x, node.y + i * lh + pad);
+    });
+}
+function renderNode(ctx, node, images, options = {}) {
+    if (options.skipId && node.id === options.skipId)
+        return;
+    ctx.save();
+    ctx.globalAlpha *= node.style.opacity;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const m = nodeMatrix(node);
+    if (!isIdentity(m)) {
+        ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    }
+    switch (node.type) {
+        case 'path':
+            applyStrokeFill(ctx, node, () => tracePath(ctx, node));
+            break;
+        case 'rect':
+            applyStrokeFill(ctx, node, () => {
+                if (node.rx && node.rx > 0)
+                    traceRoundedRect(ctx, node.x, node.y, node.w, node.h, node.rx);
+                else
+                    ctx.rect(node.x, node.y, node.w, node.h);
+            });
+            break;
+        case 'ellipse':
+            applyStrokeFill(ctx, node, () => ctx.ellipse(node.x + node.w / 2, node.y + node.h / 2, Math.max(node.w / 2, 0), Math.max(node.h / 2, 0), 0, 0, Math.PI * 2));
+            break;
+        case 'diamond':
+            applyStrokeFill(ctx, node, () => {
+                const pts = diamondPoints(getBBox(node));
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++)
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.closePath();
+            });
+            break;
+        case 'triangle':
+            applyStrokeFill(ctx, node, () => {
+                const pts = trianglePoints(getBBox(node), node.flipY);
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++)
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.closePath();
+            });
+            break;
+        case 'line':
+            applyStrokeFill(ctx, node, () => {
+                ctx.moveTo(node.x1, node.y1);
+                ctx.lineTo(node.x2, node.y2);
+                if (node.arrow) {
+                    const size = Math.max(10, node.style.strokeWidth * 3.2);
+                    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(node.x2, node.y2);
+                    ctx.lineTo(b.x, b.y);
+                }
+            });
+            break;
+        case 'text':
+            renderText(ctx, node);
+            break;
+        case 'image': {
+            const img = images.get(node.src);
+            if (img && img.complete && img.naturalWidth > 0) {
+                if (node.flipX || node.flipY) {
+                    const cx = node.x + node.w / 2;
+                    const cy = node.y + node.h / 2;
+                    ctx.translate(cx, cy);
+                    ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
+                    ctx.translate(-cx, -cy);
+                }
+                ctx.drawImage(img, node.x, node.y, node.w, node.h);
+            }
+            else {
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                ctx.fillRect(node.x, node.y, node.w, node.h);
+                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.strokeRect(node.x, node.y, node.w, node.h);
+                ctx.setLineDash([]);
+            }
+            break;
+        }
+        case 'group':
+            for (const child of node.children)
+                renderNode(ctx, child, images, options);
+            break;
+    }
+    ctx.restore();
+}
+function renderScene(ctx, nodes, images, options = {}) {
+    for (const node of nodes)
+        renderNode(ctx, node, images, options);
+}
+//# sourceMappingURL=render.js.map
+
+// ---- C:\dev\dohwa\dist\render\cache.js
 /**
  * Per-object bitmap caching, à la Fabric's objectCaching.
  *
@@ -2931,7 +2803,135 @@ class ObjectCache {
 }
 //# sourceMappingURL=cache.js.map
 
-// ---- dist/index.js
+// ---- C:\dev\dohwa\dist\render\svg.js
+const fmt = (n) => String(Math.round(n * 100) / 100);
+function escapeXML(s) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+function styleAttrs(node) {
+    const { stroke, fill, strokeWidth, opacity } = node.style;
+    const parts = [
+        `fill="${fill === 'transparent' ? 'none' : fill}"`,
+        `stroke="${stroke === 'transparent' ? 'none' : stroke}"`,
+        `stroke-width="${fmt(strokeWidth)}"`,
+        'stroke-linecap="round"',
+        'stroke-linejoin="round"',
+    ];
+    if (opacity !== 1)
+        parts.push(`opacity="${fmt(opacity)}"`);
+    return parts.join(' ');
+}
+function rotationAttr(node) {
+    const m = nodeMatrix(node);
+    if (isIdentity(m))
+        return '';
+    return ` transform="${toCSS(m)}"`;
+}
+function pathD(node) {
+    const pts = node.points;
+    if (pts.length === 0)
+        return '';
+    let d = `M ${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
+    if (pts.length === 1)
+        return d + ` L ${fmt(pts[0].x + 0.01)} ${fmt(pts[0].y)}`;
+    if (pts.length === 2)
+        return d + ` L ${fmt(pts[1].x)} ${fmt(pts[1].y)}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2;
+        const my = (pts[i].y + pts[i + 1].y) / 2;
+        d += ` Q ${fmt(pts[i].x)} ${fmt(pts[i].y)} ${fmt(mx)} ${fmt(my)}`;
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L ${fmt(last.x)} ${fmt(last.y)}`;
+}
+function lineSVG(node) {
+    const attr = rotationAttr(node);
+    if (!node.arrow) {
+        return `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}${attr}/>`;
+    }
+    const size = Math.max(10, node.style.strokeWidth * 3.2);
+    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
+    const line = `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}/>`;
+    const head = `<polyline points="${fmt(a.x)},${fmt(a.y)} ${fmt(node.x2)},${fmt(node.y2)} ${fmt(b.x)},${fmt(b.y)}" ${styleAttrs(node)}/>`;
+    return `<g${attr}>${line}${head}</g>`;
+}
+function polygonSVG(node, pts) {
+    const points = pts.map((p) => `${fmt(p.x)},${fmt(p.y)}`).join(' ');
+    return `<polygon points="${points}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+}
+function nodeToSVG(node) {
+    switch (node.type) {
+        case 'path':
+            return `<path d="${pathD(node)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'rect':
+            return `<rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"${node.rx ? ` rx="${fmt(node.rx)}"` : ''} ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'ellipse':
+            return `<ellipse cx="${fmt(node.x + node.w / 2)}" cy="${fmt(node.y + node.h / 2)}" rx="${fmt(node.w / 2)}" ry="${fmt(node.h / 2)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'diamond':
+            return polygonSVG(node, diamondPoints(getBBox(node)));
+        case 'triangle':
+            return polygonSVG(node, trianglePoints(getBBox(node), node.flipY));
+        case 'line':
+            return lineSVG(node);
+        case 'text': {
+            const lh = node.fontSize * LINE_HEIGHT;
+            const pad = (lh - node.fontSize) / 2;
+            const color = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
+            const tspans = node.text
+                .split('\n')
+                .map((line, i) => `<tspan x="${fmt(node.x)}" y="${fmt(node.y + i * lh + pad)}">${escapeXML(line) || ' '}</tspan>`)
+                .join('');
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            return `<text font-family="${escapeXML(node.fontFamily)}" font-size="${fmt(node.fontSize)}" fill="${color}" dominant-baseline="text-before-edge"${op}${rotationAttr(node)}>${tspans}</text>`;
+        }
+        case 'image': {
+            const sx = node.flipX ? -1 : 1;
+            const sy = node.flipY ? -1 : 1;
+            const flip = node.flipX || node.flipY
+                ? ` transform="translate(${fmt(node.x + node.w / 2)} ${fmt(node.y + node.h / 2)}) scale(${sx} ${sy}) translate(${fmt(-(node.x + node.w / 2))} ${fmt(-(node.y + node.h / 2))})"`
+                : '';
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            const inner = `<image x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}" href="${escapeXML(node.src)}" preserveAspectRatio="none"${op}${flip}/>`;
+            const rot = rotationAttr(node);
+            return rot ? `<g${rot}>${inner}</g>` : inner;
+        }
+        case 'group': {
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            return `<g${op}${rotationAttr(node)}>${node.children.map(nodeToSVG).join('')}</g>`;
+        }
+    }
+}
+function sceneToSVG(nodes, options = {}) {
+    const padding = options.padding ?? 24;
+    const box = nodes.length > 0 ? unionBBox(nodes.map(getAABB)) : { x: 0, y: 0, w: 100, h: 100 };
+    const x = box.x - padding;
+    const y = box.y - padding;
+    const w = box.w + padding * 2;
+    const h = box.h + padding * 2;
+    const bg = options.background
+        ? `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="${options.background}"/>`
+        : '';
+    return (`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(x)} ${fmt(y)} ${fmt(w)} ${fmt(h)}" width="${fmt(w)}" height="${fmt(h)}">` +
+        bg +
+        nodes.map(nodeToSVG).join('') +
+        `</svg>`);
+}
+//# sourceMappingURL=svg.js.map
+
+// ---- C:\dev\dohwa\dist\types.js
+const DEFAULT_STYLE = {
+    stroke: '#1c1917',
+    fill: 'transparent',
+    strokeWidth: 3,
+    opacity: 1,
+};
+//# sourceMappingURL=types.js.map
+
+// ---- C:\dev\dohwa\dist\index.js
 // ---------------------------------------------------------------- engine
 
 // ---------------------------------------------------------------- pure geometry (DOM-free)
@@ -2952,7 +2952,7 @@ class ObjectCache {
 
 //# sourceMappingURL=index.js.map
 
-// ---- dist/tools.js
+// ---- C:\dev\dohwa\dist\tools.js
 const ICON_ATTRS = {
     viewBox: '0 0 24 24',
     fill: 'none',
@@ -3117,7 +3117,7 @@ function getActionMeta(key) {
 }
 //# sourceMappingURL=tools.js.map
 
-// ---- dist/store.js
+// ---- C:\dev\dohwa\dist\store.js
 class DohwaStore {
     constructor(app) {
         this.listeners = new Set();
@@ -3286,7 +3286,7 @@ function createStore(app) {
 }
 //# sourceMappingURL=store.js.map
 
-// ---- dist/ui.js
+// ---- C:\dev\dohwa\dist\ui.js
 /**
  * UI-building material — tool/action metadata and a headless store.
  * Import from 'dohwa/ui'. Nothing here renders DOM; you build the toolbar.
@@ -3295,7 +3295,7 @@ function createStore(app) {
 
 //# sourceMappingURL=ui.js.map
 
-// ---- dist/theme.js
+// ---- C:\dev\dohwa\dist\theme.js
 /** Ink on hanji paper — the dohwa house palette. */
 const HANJI_PALETTE = {
     key: 'hanji',
@@ -3383,7 +3383,7 @@ function applyTheme(el, theme) {
 }
 //# sourceMappingURL=theme.js.map
 
-// ---- dist/presets.js
+// ---- C:\dev\dohwa\dist\presets.js
 /**
  * Optional palettes and UI themes. Import from 'dohwa/presets'.
  * The engine never depends on these — swap in your own design tokens freely.
@@ -3391,7 +3391,7 @@ function applyTheme(el, theme) {
 
 //# sourceMappingURL=presets.js.map
 
-// ---- dist/factory.js
+// ---- C:\dev\dohwa\dist\factory.js
 /**
  * Pure node constructors — no DOM, no engine instance required.
  * Build scenes on a server, in a test, or from an LLM's JSON output,
@@ -3532,7 +3532,7 @@ function validateScene(input) {
 }
 //# sourceMappingURL=factory.js.map
 
-// ---- dist/nodes.js
+// ---- C:\dev\dohwa\dist\nodes.js
 /**
  * Pure node factories + scene validation. Import from 'dohwa/nodes'.
  * DOM-free: build and verify scenes on a server, in tests, or from LLM output.
@@ -3543,7 +3543,7 @@ function validateScene(input) {
 
 //# sourceMappingURL=nodes.js.map
 
-// ---- dist/global.js
+// ---- C:\dev\dohwa\dist\global.js
 // Everything, flattened — for the IIFE/script-tag build (window.Dohwa.*)
 
 

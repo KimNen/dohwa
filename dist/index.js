@@ -1,19 +1,19 @@
 // ---------------------------------------------------------------- engine
-export { Dohwa } from './dohwa.js';
+export { Dohwa } from './core/dohwa.js';
 // ---------------------------------------------------------------- pure geometry (DOM-free)
-export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, } from './geometry.js';
+export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, } from './geometry/geometry.js';
 // ---------------------------------------------------------------- affine matrix (DOM-free)
-export { IDENTITY, multiply, composeAll, compose, translation, scaling, rotation, skewing, applyToPoint, invert, determinant, isIdentity, decompose, toCSS, transformBBox, } from './matrix.js';
+export { IDENTITY, multiply, composeAll, compose, translation, scaling, rotation, skewing, applyToPoint, invert, determinant, isIdentity, decompose, toCSS, transformBBox, } from './geometry/matrix.js';
 // ---------------------------------------------------------------- spatial index (DOM-free)
-export { Quadtree } from './spatial.js';
+export { Quadtree } from './geometry/spatial.js';
 // ---------------------------------------------------------------- object cache (opt-in)
-export { ObjectCache, shouldCache, cacheKey } from './cache.js';
+export { ObjectCache, shouldCache, cacheKey } from './render/cache.js';
 // ---------------------------------------------------------------- rendering
-export { renderScene, renderNode, tracePath, measureText, arrowHead, LINE_HEIGHT } from './render.js';
+export { renderScene, renderNode, tracePath, measureText, arrowHead, LINE_HEIGHT } from './render/render.js';
 // ---------------------------------------------------------------- serialization
-export { sceneToSVG, nodeToSVG } from './svg.js';
+export { sceneToSVG, nodeToSVG } from './render/svg.js';
 // ---------------------------------------------------------------- primitives
-export { History, Emitter } from './core.js';
+export { History, Emitter } from './core/core.js';
 // ---------------------------------------------------------------- types
 export * from './types.js';
 //# sourceMappingURL=index.js.map

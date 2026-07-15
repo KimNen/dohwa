@@ -19,7 +19,7 @@ Every node may carry `transform?: Matrix` — a 6-element affine
 SVG `matrix()`. One matrix expresses translate + rotate + scale + skew, and
 transforms compose by multiplication.
 
-- `src/matrix.ts` — pure affine algebra: `compose`, `multiply`, `invert`,
+- `src/geometry/matrix.ts` — pure affine algebra: `compose`, `multiply`, `invert`,
   `decompose`, `applyToPoint`, `transformBBox`. 17 tests, incl. invert
   round-trips and compose/decompose symmetry.
 - `nodeMatrix(node)` in `geometry.ts` is the **single bridge**: it resolves a
@@ -41,7 +41,7 @@ field. The data model no longer blocks them.
 
 ## 2. Performance layer
 
-### Spatial index (`src/spatial.ts`)
+### Spatial index (`src/geometry/spatial.ts`)
 A quadtree over world-space AABBs. Broad-phase point/box queries return only
 the handful of candidates overlapping the query, instead of scanning every
 node. Pure and brute-force-verified (400 items × 400 random queries match
@@ -70,7 +70,7 @@ queries the index for the visible world rectangle and draws only those nodes,
 bounding per-frame cost by what's *in view* rather than scene size. Skipped
 during active drags (the index is intentionally stale then).
 
-### Object cache (`src/cache.ts`, opt-in)
+### Object cache (`src/render/cache.ts`, opt-in)
 Bitmap caching for expensive nodes (long paths, non-trivial groups): render
 once to an offscreen canvas keyed by a content hash, then `drawImage` on
 reuse. The cache-key logic is pure and tested — the hash **excludes**

@@ -1,61 +1,63 @@
+> Read this in [English](README.en.md).
+
 # dohwa 圖畵
 
-> **도화(圖畵)** — drawing paper. A **headless**, dependency-free canvas drawing engine.
-> Freehand ink, shapes, text, images, rotation, grouping, replay — and **you** build the UI.
+> **도화(圖畵)** — 그림을 그리는 종이. 의존성 없는 **헤드리스(headless)** 캔버스 드로잉 엔진.
+> 자유곡선 잉크, 도형, 텍스트, 이미지, 회전, 그룹핑, 리플레이 — UI는 **당신**이 만듭니다.
 
-dohwa owns one `<canvas>` and exposes an imperative API + events. It ships **no components**:
-instead it exports the *material* for building your own toolbar — tool metadata (with icons and
-shortcuts), palettes, themes, and a framework-agnostic store. Scenes are plain JSON and the
-geometry is DOM-free, so the same code runs in Node, in tests, or on a server.
+dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공합니다. **컴포넌트는 제공하지 않습니다**.
+대신 여러분이 직접 툴바를 만들 수 있도록 *재료*를 내보냅니다 — 아이콘과 단축키가 포함된 툴 메타데이터,
+팔레트, 테마, 그리고 프레임워크에 종속되지 않는 스토어까지. 씬(scene)은 순수 JSON이고 지오메트리
+모듈은 DOM에 의존하지 않아서, 같은 코드가 Node·테스트·서버 어디서든 동일하게 동작합니다.
 
-## Packages
+## 패키지 구성
 
-| import | what's in it | needs a DOM? |
+| import | 내용 | DOM 필요? |
 | --- | --- | --- |
-| `dohwa` | engine, pure geometry, SVG serialization | engine yes, geometry no |
-| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, icons, `createStore()` | no |
-| `dohwa/presets` | `PALETTES`, `THEMES`, `applyTheme()`, `STROKE_WIDTHS` | only `applyTheme` |
-| `dohwa/nodes` | pure node factories + `validateScene()` | no |
+| `dohwa` | 엔진, 순수 지오메트리, SVG 직렬화 | 엔진은 필요, 지오메트리는 불필요 |
+| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, 아이콘, `createStore()` | 불필요 |
+| `dohwa/presets` | `PALETTES`, `THEMES`, `applyTheme()`, `STROKE_WIDTHS` | `applyTheme`만 필요 |
+| `dohwa/nodes` | 순수 노드 팩토리 + `validateScene()` | 불필요 |
 
-Subpaths are separate entry points, so importing the engine doesn't pull in the palettes,
-and a server route that only builds scenes never touches DOM code.
+서브패스가 각각 독립된 엔트리포인트라서, 엔진만 import해도 팔레트까지 딸려오지 않고
+씬만 생성하는 서버 라우트는 DOM 관련 코드를 전혀 건드리지 않습니다.
 
-## Features
+## 기능
 
-**Drawing**
-- ✍️ Freehand pen with quadratic smoothing
-- ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow** (Shift = square / circle / 45° snap)
-- 🔤 **Text** — click to create, double-click to edit inline (floating textarea), multiline, font scaling on resize
-- 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip
+**드로잉**
+- ✍️ 2차 베지어로 부드럽게 처리되는 자유곡선 펜
+- ⬛ 도형 — 사각형(`rx` 모서리 둥글기), 타원, 다이아몬드, 삼각형, 직선, **화살표** (Shift = 정사각형 / 정원 / 45° 스냅)
+- 🔤 **텍스트** — 클릭해서 생성, 더블클릭으로 인라인 편집(플로팅 텍스트에어리어), 여러 줄, 리사이즈 시 폰트 크기 자동 조정
+- 🖼 이미지 — URL / `File` / 드래그 앤 드롭, 좌우·상하 반전
 
-**Editing**
-- 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)
-- 🔄 **Rotation** — rotation handle above the selection (Shift = 15° snap); multi-selection orbits around the common pivot; rotation-aware hit testing & AABB
-- 🧽 **Eraser** — drag to delete objects
-- 🗂 Grouping — group / ungroup (group rotation is baked into children on ungroup)
-- ↔️ Flip horizontal / vertical, 🔒 lock / unlock, 📋 copy / cut / paste, arrow-key nudge (Shift = 10px)
-- ↩️ Undo / redo — snapshot history
+**편집**
+- 🧲 선택 — 클릭, Shift-클릭, 마키(드래그 선택); 이동, 8-핸들 리사이즈 (Shift = 비율 유지)
+- 🔄 **회전** — 선택 영역 위의 회전 핸들(Shift = 15° 스냅); 다중 선택 시 공통 피벗을 중심으로 회전; 회전을 고려한 히트 테스트 & AABB
+- 🧽 **지우개** — 드래그해서 객체 삭제
+- 🗂 그룹핑 — 그룹 / 그룹 해제 (그룹 해제 시 그룹 회전값이 자식 노드에 반영됨)
+- ↔️ 좌우/상하 반전, 🔒 잠금 / 잠금 해제, 📋 복사 / 잘라내기 / 붙여넣기, 방향키 이동 (Shift = 10px)
+- ↩️ 실행 취소 / 다시 실행 — 스냅샷 히스토리
 
-**Canvas & IO**
-- 🔭 Infinite canvas — wheel zoom at cursor, pinch zoom, space-drag pan, zoom-to-fit
-- 💾 `toJSON()` / `loadJSON()` — plain JSON scenes
-- 🖼 `exportPNG()` with content auto-crop · 🎨 **`exportSVG()`** true vector export
-- ▶️ **`replay()`** — replays the drawing chronology stroke-by-stroke (see below)
-- ⌨️ Full keyboard shortcuts, HiDPI rendering, zero dependencies
+**캔버스 & 입출력**
+- 🔭 무한 캔버스 — 커서 위치 기준 휠 줌, 핀치 줌, 스페이스+드래그 팬, 화면에 맞추기
+- 💾 `toJSON()` / `loadJSON()` — 순수 JSON 씬
+- 🖼 콘텐츠 자동 크롭이 적용된 `exportPNG()` · 🎨 진짜 벡터로 내보내는 **`exportSVG()`**
+- ▶️ **`replay()`** — 그려진 순서 그대로 스트로크 단위로 재생 (아래 참고)
+- ⌨️ 전체 키보드 단축키, HiDPI 렌더링, 의존성 제로
 
-## Install
+## 설치
 
 ```bash
 npm i dohwa
 ```
 
-Or drop the IIFE bundle in a script tag (exposes `window.Dohwa`):
+또는 스크립트 태그에 IIFE 번들을 바로 넣어도 됩니다 (`window.Dohwa`로 노출됨):
 
 ```html
 <script src="dist/dohwa.global.js"></script>
 ```
 
-## Quick start
+## 빠른 시작
 
 ```ts
 import { Dohwa } from 'dohwa';
@@ -71,14 +73,14 @@ app.addText('안녕, 도화!', { x: 100, y: 80 });
 await app.addImage('/logo.png');
 
 app.on('selection', (ids) => console.log('selected:', ids));
-app.on('history', ({ canUndo, canRedo }) => { /* sync your toolbar */ });
+app.on('history', ({ canUndo, canRedo }) => { /* 툴바 상태 동기화 */ });
 
 const png = app.exportPNG({ scale: 2, background: '#fff' });
-const svg = app.exportSVG();        // vector!
-await app.replay({ fps: 6 });       // watch it being drawn again
+const svg = app.exportSVG();        // 진짜 벡터!
+await app.replay({ fps: 6 });       // 그려지는 과정을 다시 재생
 ```
 
-### React (Next.js) usage
+### React (Next.js) 사용 예
 
 ```tsx
 'use client';
@@ -98,10 +100,10 @@ export function Board() {
 }
 ```
 
-## Bring your own UI
+## 직접 만드는 UI
 
-The engine never renders a toolbar. It gives you the data to build one — so the toolbar
-matches *your* design system, framework, and language, not ours.
+엔진은 툴바를 그려주지 않습니다. 대신 툴바를 만들 수 있는 데이터를 제공해서,
+결과물이 dohwa가 아니라 *당신의* 디자인 시스템, 프레임워크, 언어를 따르게 합니다.
 
 ```ts
 import { Dohwa } from 'dohwa';
@@ -111,35 +113,35 @@ import { PALETTES, applyTheme, THEMES } from 'dohwa/presets';
 const app = new Dohwa(el, { tool: 'pen' });
 const store = createStore(app);
 
-// 1. tools are data — icons are SVG path strings for a 24x24 viewBox
+// 1. 툴은 데이터입니다 — 아이콘은 24x24 viewBox 기준 SVG path 문자열
 TOOL_METAS.forEach((meta) => {
   // meta.tool 'pen' | meta.label 'Pen' | meta.shortcut 'p'
   // meta.icon ['M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z']
-  // meta.key  — stable, non-localized: use it to look up your own i18n strings
+  // meta.key  — 고정된, 지역화되지 않은 키: 여기에 맞춰 자체 i18n 문자열을 매핑
   renderButton(meta, () => app.setTool(meta.tool));
 });
 
-// 2. actions carry their own enablement rules
-store.canRun('group');   // false until 2+ nodes are selected
-store.run('group');      // one dispatcher instead of 20 wired handlers
+// 2. 액션은 자체적으로 활성화 규칙을 가짐
+store.canRun('group');   // 노드가 2개 이상 선택되기 전까지 false
+store.run('group');      // 20개의 개별 핸들러 대신 디스패처 하나로 처리
 
-// 3. one snapshot drives the whole UI
+// 3. 스냅샷 하나가 UI 전체를 구동
 store.subscribe(() => {
   const s = store.getSnapshot();
   // { tool, style, selectionCount, canUndo, canRedo, zoomPercent, isReplaying, ... }
 });
 ```
 
-`store.subscribe` / `store.getSnapshot` are shaped for React's `useSyncExternalStore`,
-and bridge to Zustand, Vue `reactive`, or Svelte stores in a few lines.
-See **[examples/react.md](examples/react.md)** for a full Next.js + shadcn/ui toolbar.
+`store.subscribe` / `store.getSnapshot`은 React의 `useSyncExternalStore`에 맞는 형태이고,
+몇 줄만 추가하면 Zustand, Vue `reactive`, Svelte 스토어에도 연결할 수 있습니다.
+Next.js + shadcn/ui로 만든 전체 툴바 예시는 **[examples/react.md](examples/react.md)**를 참고하세요.
 
-The demo builds its *entire* toolbar from `TOOL_METAS` + `createStore` in vanilla JS —
-that's the proof the exported surface is actually sufficient.
+데모 페이지는 순수 바닐라 JS로 `TOOL_METAS` + `createStore`만 가지고 툴바 *전체*를 만듭니다 —
+export된 표면만으로 충분하다는 걸 보여주는 증거입니다.
 
-## Palettes & themes
+## 팔레트 & 테마
 
-Colors are data too. Use ours, or ignore them entirely.
+색상도 데이터입니다. 제공된 걸 쓰거나, 완전히 무시해도 됩니다.
 
 ```ts
 import { PALETTES, HANJI_PALETTE, applyTheme, THEMES, STROKE_WIDTHS } from 'dohwa/presets';
@@ -147,17 +149,17 @@ import { PALETTES, HANJI_PALETTE, applyTheme, THEMES, STROKE_WIDTHS } from 'dohw
 HANJI_PALETTE.strokes; // [{ key: 'ink', label: 'Ink', value: '#221d18' }, ...]
 HANJI_PALETTE.fills;   // [{ key: 'none', value: 'transparent' }, ...]
 
-// UI chrome theming — writes --dohwa-* CSS custom properties
+// UI 크롬 테마 적용 — --dohwa-* CSS 커스텀 프로퍼티를 씀
 applyTheme(document.documentElement, THEMES[0]);
 
-// or just pass your own brand tokens; the engine has no opinion
+// 아니면 그냥 자체 브랜드 토큰을 넘겨도 됨; 엔진은 색상에 대해 아무 주장도 하지 않음
 app.setStyle({ stroke: 'var(--brand-600)', strokeWidth: 4 });
 ```
 
-## Building scenes without a browser
+## 브라우저 없이 씬 만들기
 
-`dohwa/nodes` and the geometry module are DOM-free — generate diagrams on a server,
-assert on them in tests, or let an LLM emit scene JSON and validate it before loading.
+`dohwa/nodes`와 지오메트리 모듈은 DOM에 의존하지 않습니다 — 서버에서 다이어그램을 생성하거나,
+테스트에서 단정문을 작성하거나, LLM이 만든 씬 JSON을 로드 전에 검증할 수 있습니다.
 
 ```ts
 import { rect, text, arrow, group, scene, validateScene } from 'dohwa/nodes';
@@ -171,95 +173,96 @@ const doc = scene([
   arrow({ x1: 160, y1: 30, x2: 260, y2: 30 }),
 ]);
 
-validateScene(doc);        // { valid: true, errors: [] } — check untrusted/LLM input
-sceneToSVG(doc.nodes);     // '<svg ...>' — render on the server, no canvas needed
-getAABB(doc.nodes[0]);     // bbox math in a test
-app.loadJSON(doc);         // and the same object loads in the browser
+validateScene(doc);        // { valid: true, errors: [] } — 신뢰할 수 없는/LLM 입력 검증
+sceneToSVG(doc.nodes);     // '<svg ...>' — 캔버스 없이 서버에서 렌더링
+getAABB(doc.nodes[0]);     // 테스트에서 bbox 계산
+app.loadJSON(doc);         // 같은 객체를 브라우저에서도 그대로 로드
 ```
 
 
-## Transforms & performance (v0.4)
+## 트랜스폼 & 성능 (v0.4)
 
-Nodes carry an affine `transform` matrix `[a,b,c,d,e,f]` — translate, rotate,
-**non-uniform scale, and skew** in one place, composing by multiplication.
-Legacy `rotation`-field scenes still load unchanged; `nodeMatrix()` bridges both.
+노드는 어파인 `transform` 행렬 `[a,b,c,d,e,f]`을 가지고 있어서 — 이동, 회전,
+**비균등 스케일, 스큐**까지 하나의 값으로 표현하고 곱셈으로 합성됩니다.
+기존 `rotation` 필드 기반 씬도 그대로 로드되며, `nodeMatrix()`가 둘 사이를 연결합니다.
 
 ```ts
 import { rect, compose, skewing } from 'dohwa/nodes';
 rect({ x: 0, y: 0, w: 100, h: 40, transform: compose({ skewX: 0.3, scaleX: 2 }) });
 ```
 
-A **quadtree spatial index** + **viewport culling** keep large scenes fast:
-hit-testing thousands of path nodes is ~30–90× faster than a linear scan, and
-off-screen nodes aren't drawn. Both are automatic past small-scene thresholds.
-See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the design and benchmarks, and
-`demo/bench.html` for a live comparison.
+**쿼드트리 공간 인덱스** + **뷰포트 컬링**이 대규모 씬에서도 속도를 유지해줍니다:
+수천 개의 path 노드 히트 테스트가 선형 탐색보다 약 30~90배 빠르고,
+화면 밖 노드는 그리지 않습니다. 둘 다 씬 크기가 일정 임계값을 넘으면 자동으로 적용됩니다.
+설계와 벤치마크는 **[ARCHITECTURE.md](ARCHITECTURE.md)**를, 실시간 비교는
+`demo/bench.html`을 참고하세요.
 
 ```ts
 import { Quadtree, getAABB, ObjectCache } from 'dohwa';
 const tree = Quadtree.build(nodes.map((n) => ({ id: n.id, box: getAABB(n) })));
-tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
+tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조회
 ```
 
 ## API
 
 ### `new Dohwa(container, options?)`
 
-| option | type | default |
+| 옵션 | 타입 | 기본값 |
 | --- | --- | --- |
 | `tool` | `Tool` | `'pen'` |
-| `style` | `Partial<Style>` | ink black, 3px |
+| `style` | `Partial<Style>` | 검은 잉크, 3px |
 | `background` | `string` | `'transparent'` |
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
 
 `Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'text' | 'eraser' | 'pan'`
 
-### Methods
+### 메서드
 
-| method | description |
+| 메서드 | 설명 |
 | --- | --- |
-| `setTool(tool)` / `getTool()` | switch tools |
-| `setStyle(patch)` / `getStyle()` | style for new nodes; also applies to selection |
-| `selectAll()` / `clearSelection()` / `getSelectedIds()` | selection |
-| `deleteSelection()` / `duplicateSelection()` | edit |
-| `copySelection()` / `cutSelection()` / `paste()` | clipboard |
-| `group()` / `ungroup()` | grouping |
+| `setTool(tool)` / `getTool()` | 툴 전환 |
+| `setStyle(patch)` / `getStyle()` | 새 노드에 적용될 스타일; 선택된 노드에도 적용 |
+| `selectAll()` / `clearSelection()` / `getSelectedIds()` | 선택 |
+| `deleteSelection()` / `duplicateSelection()` | 편집 |
+| `copySelection()` / `cutSelection()` / `paste()` | 클립보드 |
+| `group()` / `ungroup()` | 그룹핑 |
 | `bringToFront()` / `sendToBack()` | z-order |
-| `flipSelection('h' \| 'v')` | mirror |
-| `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | lock |
-| `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |
-| `addImage(src)` / `addImageFromFile(file)` | images |
-| `undo()` / `redo()` / `getHistoryState()` | history |
-| `replay(opts?)` / `getTimeline()` / `isReplaying()` | drawing replay |
-| `zoomIn()` / `zoomOut()` / `setZoom(s, anchor?)` / `zoomToFit()` / `resetView()` | viewport |
-| `toJSON()` / `loadJSON(json)` / `exportPNG(opts?)` / `exportSVG(opts?)` | io |
-| `getNodes()` / `clear()` / `destroy()` | misc |
+| `flipSelection('h' \| 'v')` | 반전 |
+| `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | 잠금 |
+| `addText(text, at?, fontSize?)` / `startTextEdit(node)` | 텍스트 |
+| `addImage(src)` / `addImageFromFile(file)` | 이미지 |
+| `undo()` / `redo()` / `getHistoryState()` | 히스토리 |
+| `replay(opts?)` / `getTimeline()` / `isReplaying()` | 드로잉 리플레이 |
+| `zoomIn()` / `zoomOut()` / `setZoom(s, anchor?)` / `zoomToFit()` / `resetView()` | 뷰포트 |
+| `toJSON()` / `loadJSON(json)` / `exportPNG(opts?)` / `exportSVG(opts?)` | 입출력 |
+| `getNodes()` / `clear()` / `destroy()` | 기타 |
 
-### Events — `app.on(event, fn)`
+### 이벤트 — `app.on(event, fn)`
 
 `'change'` · `'selection'` (ids) · `'tool'` (tool) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'replay'` (boolean)
 
-### Keyboard
+### 키보드
 
-`V` select · `P` pen · `R` rect · `O` ellipse · `D` diamond · `L` line · `A` arrow · `T` text · `E` eraser · `H` pan · `Space` temp-pan ·
-`Del` delete · `Ctrl+Z / Ctrl+Shift+Z` undo/redo · `Ctrl+G / Ctrl+Shift+G` group/ungroup ·
-`Ctrl+C / X / V` copy/cut/paste · `Ctrl+D` duplicate · `Ctrl+A` select all · `Esc` deselect · `←↑→↓` nudge (Shift = 10px)
+`V` 선택 · `P` 펜 · `R` 사각형 · `O` 타원 · `D` 다이아몬드 · `L` 직선 · `A` 화살표 · `T` 텍스트 · `E` 지우개 · `H` 팬 · `Space` 임시 팬 ·
+`Del` 삭제 · `Ctrl+Z / Ctrl+Shift+Z` 실행 취소/다시 실행 · `Ctrl+G / Ctrl+Shift+G` 그룹/그룹 해제 ·
+`Ctrl+C / X / V` 복사/잘라내기/붙여넣기 · `Ctrl+D` 복제 · `Ctrl+A` 전체 선택 · `Esc` 선택 해제 · `←↑→↓` 이동 (Shift = 10px)
 
-## Replay — the signature feature
+## 리플레이 — 대표 기능
 
-dohwa keeps an **append-only timeline** of every committed state, separate from the undo stack
-(undo rewrites history; the timeline never forgets the real drawing order). `replay()` animates
-the scene from the first stroke to the present — a built-in time-lapse of how a drawing was made.
+dohwa는 실행 취소 스택과는 별개로, 커밋된 모든 상태를 담는 **추가 전용(append-only) 타임라인**을
+유지합니다 (실행 취소는 히스토리를 재작성하지만, 타임라인은 실제로 그려진 순서를 절대 잊지 않습니다).
+`replay()`는 첫 스트로크부터 현재까지 씬을 애니메이션으로 재생합니다 — 그림이 어떻게 그려졌는지
+보여주는 내장 타임랩스 기능입니다.
 
 ```ts
 await app.replay({ fps: 6 });
-const frames = app.getTimeline(); // string[] of scene snapshots — build your own scrubber
+const frames = app.getTimeline(); // 씬 스냅샷의 string[] — 원하는 스크러버를 직접 구현 가능
 ```
 
-## Scene format
+## 씬 포맷
 
-Plain JSON — easy to persist, diff, or **generate programmatically / by an LLM**:
+순수 JSON — 저장하거나, diff를 뜨거나, **프로그래밍적으로 / LLM으로 생성**하기 쉽습니다:
 
 ```json
 {
@@ -273,40 +276,40 @@ Plain JSON — easy to persist, diff, or **generate programmatically / by an LLM
 }
 ```
 
-The geometry module (`getBBox`, `getAABB`, `hitTestNode`, `scaleNodeInto`, …) is pure and DOM-free —
-you can validate, hit-test, and transform scenes on a server or in tests without a browser.
+지오메트리 모듈(`getBBox`, `getAABB`, `hitTestNode`, `scaleNodeInto`, …)은 순수하고 DOM에
+의존하지 않아서 — 브라우저 없이도 서버나 테스트에서 씬을 검증·히트 테스트·트랜스폼할 수 있습니다.
 
-## Known limitations
+## 알려진 한계
 
-- Resizing a **multi**-selection that contains rotated nodes scales their AABB approximately.
-- Resizing a rotated single node anchors in local space (slight pivot drift vs. Figma-style anchoring).
-- Text wrapping is manual (newlines); no auto-wrap width yet.
+- 회전된 노드가 포함된 **다중** 선택을 리사이즈하면 AABB 기준으로 근사 계산됩니다.
+- 회전된 단일 노드를 리사이즈하면 로컬 좌표계 기준으로 앵커링됩니다 (Figma 방식 앵커링과는 피벗이 약간 다릅니다).
+- 텍스트 줄바꿈은 수동(개행 문자)입니다. 자동 줄바꿈 너비는 아직 없습니다.
 
-## Development
+## 개발
 
 ```bash
 npm i
 npm run typecheck   # tsc --noEmit
-npm run build       # tsc -> ESM + .d.ts, then the IIFE bundle
-npm run demo        # demo/index.html (single file, bundle inlined)
-npm test            # 99 assertions across matrix, geometry, spatial, cache, ui
+npm run build       # tsc -> ESM + .d.ts, 이후 IIFE 번들
+npm run demo        # demo/index.html (단일 파일, 번들 인라인)
+npm test            # matrix, geometry, spatial, cache, ui 등 99개 단정문
 ```
 
-## Roadmap
+## 로드맵
 
-- [ ] Replay scrubber / export replay as GIF·WebM
-- [ ] Pressure-sensitive strokes (PointerEvent.pressure)
-- [ ] Pixel-level path eraser (split segments)
-- [x] ~~Exported UI material (tool metadata, palettes, headless store)~~ — v0.3
-- [ ] `@dohwa/react` bindings package (thin wrapper over `dohwa/ui`)
-- [x] ~~Matrix transform model (non-uniform scale, skew, nested transforms)~~ — v0.4
-- [x] ~~Spatial index + viewport culling for large scenes~~ — v0.4
-- [ ] Free-transform gestures (skew/corner handles) writing matrices from the UI
-- [ ] Wire ObjectCache into the default render path (needs visual regression)
-- [ ] Layered canvases (static + interaction)
-- [ ] Rich text (per-character styling), pattern/gradient fills
-- [ ] Collaborative cursors (CRDT-friendly ops)
+- [ ] 리플레이 스크러버 / GIF·WebM으로 리플레이 내보내기
+- [ ] 필압 감지 스트로크 (PointerEvent.pressure)
+- [ ] 픽셀 단위 경로 지우개 (세그먼트 분할)
+- [x] ~~UI 재료 export (툴 메타데이터, 팔레트, 헤드리스 스토어)~~ — v0.3
+- [ ] `@dohwa/react` 바인딩 패키지 (`dohwa/ui`의 얇은 래퍼)
+- [x] ~~행렬 트랜스폼 모델 (비균등 스케일, 스큐, 중첩 트랜스폼)~~ — v0.4
+- [x] ~~공간 인덱스 + 대규모 씬을 위한 뷰포트 컬링~~ — v0.4
+- [ ] UI에서 행렬을 직접 다루는 자유 변형 제스처 (스큐/코너 핸들)
+- [ ] ObjectCache를 기본 렌더 경로에 연결 (시각적 회귀 테스트 필요)
+- [ ] 레이어드 캔버스 (정적 + 인터랙션)
+- [ ] 리치 텍스트 (글자별 스타일링), 패턴/그라디언트 채우기
+- [ ] 협업 커서 (CRDT 친화적 오퍼레이션)
 
-## License
+## 라이선스
 
 MIT

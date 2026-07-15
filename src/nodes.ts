@@ -30,5 +30,5 @@ export {
   translation,
   skewing,
   IDENTITY,
-} from './matrix.js';
-export type { Matrix, TransformParts } from './matrix.js';
+} from './geometry/matrix.js';
+export type { Matrix, TransformParts } from './geometry/matrix.js';
