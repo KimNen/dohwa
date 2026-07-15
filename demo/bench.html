@@ -1,0 +1,3380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dohwa — performance bench</title>
+<style>
+  :root { --ink:#221d18; --paper:#f3ead8; --panel:#fbf6ea; --line:#d6c8a8; --accent:#c8431f; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; font-family:system-ui,-apple-system,sans-serif; background:var(--paper); color:var(--ink); }
+  #stage { position:fixed; inset:0; background:var(--paper);
+    background-image:radial-gradient(rgba(92,82,70,.14) 1px,transparent 1.2px); background-size:26px 26px; }
+  .panel { position:fixed; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 8px 24px rgba(60,44,20,.16); z-index:10; }
+  #controls { top:16px; left:16px; padding:14px 16px; width:280px; }
+  h1 { font-size:16px; margin-bottom:2px; }
+  .sub { font-size:11px; color:#5c5246; margin-bottom:12px; }
+  .row { display:flex; align-items:center; gap:8px; margin:8px 0; font-size:13px; }
+  .row label { flex:1; }
+  button { font-family:inherit; font-size:12px; padding:6px 12px; border:1px solid var(--line);
+    background:var(--paper); border-radius:8px; cursor:pointer; }
+  button:hover { background:#ece0c6; }
+  button.primary { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  button.accent { background:var(--accent); color:#fdf3e3; border-color:var(--accent); }
+  select, input[type=range] { font-family:inherit; }
+  #stats { top:16px; right:16px; padding:12px 14px; width:230px; font-size:12px; line-height:1.9; }
+  #stats .n { font-variant-numeric:tabular-nums; font-weight:600; }
+  .metric { display:flex; justify-content:space-between; }
+  .good { color:#3e6b47; } .bad { color:var(--accent); }
+  #hint { bottom:16px; left:16px; padding:8px 12px; font-size:11px; color:#5c5246; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="controls" class="panel">
+    <h1>dohwa perf bench</h1>
+    <div class="sub">공간 인덱스 + 뷰포트 컬링 효과 측정</div>
+    <div class="row">
+      <label>노드 수</label>
+      <select id="count">
+        <option>500</option><option selected>2000</option>
+        <option>5000</option><option>10000</option><option>20000</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>종류</label>
+      <select id="kind"><option value="path">path(무거움)</option><option value="rect">rect(가벼움)</option></select>
+    </div>
+    <div class="row"><button class="primary" id="gen">생성</button><button id="fit">전체 보기</button></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <div class="row"><button class="accent" id="hittest">히트테스트 벤치 (2000회)</button></div>
+    <div class="sub" style="margin:6px 0 0">마우스로 이동/줌 하며 렌더 FPS를 관찰하세요.<br>노드가 많아도 화면 밖은 그리지 않습니다.</div>
+  </div>
+  <div id="stats" class="panel">
+    <div class="metric"><span>노드</span><span class="n" id="s-nodes">0</span></div>
+    <div class="metric"><span>화면 내 렌더</span><span class="n" id="s-visible">0</span></div>
+    <div class="metric"><span>렌더 시간</span><span class="n" id="s-render">–</span></div>
+    <div class="metric"><span>FPS</span><span class="n" id="s-fps">–</span></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:8px 0">
+    <div class="metric"><span>히트 (인덱스)</span><span class="n good" id="s-idx">–</span></div>
+    <div class="metric"><span>히트 (브루트)</span><span class="n bad" id="s-brute">–</span></div>
+    <div class="metric"><span>배속</span><span class="n" id="s-speed">–</span></div>
+  </div>
+  <div id="hint" class="panel">Space+드래그 팬 · 휠 줌 · V 선택</div>
+
+<script>/* dohwa — IIFE build. window.Dohwa.* */
+var Dohwa = (function () {
+// ---- dist/types.js
+const DEFAULT_STYLE = {
+    stroke: '#1c1917',
+    fill: 'transparent',
+    strokeWidth: 3,
+    opacity: 1,
+};
+//# sourceMappingURL=types.js.map
+
+// ---- dist/matrix.js
+const IDENTITY = [1, 0, 0, 1, 0, 0];
+function multiply(m1, m2) {
+    const [a1, b1, c1, d1, e1, f1] = m1;
+    const [a2, b2, c2, d2, e2, f2] = m2;
+    return [
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    ];
+}
+/** Compose a chain left-to-right: composeAll([A, B, C]) applies A, then B, then C. */
+function composeAll(matrices) {
+    let acc = IDENTITY;
+    for (const m of matrices)
+        acc = multiply(acc, m);
+    return acc;
+}
+function translation(x, y) {
+    return [1, 0, 0, 1, x, y];
+}
+function scaling(sx, sy = sx) {
+    return [sx, 0, 0, sy, 0, 0];
+}
+function rotation(angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return [cos, sin, -sin, cos, 0, 0];
+}
+/** Skew given in radians. */
+function skewing(skewX, skewY) {
+    return [1, Math.tan(skewY), Math.tan(skewX), 1, 0, 0];
+}
+function compose(parts) {
+    const { translateX = 0, translateY = 0, angle = 0, scaleX = 1, scaleY = 1, skewX = 0, skewY = 0, } = parts;
+    let m = translation(translateX, translateY);
+    if (angle !== 0)
+        m = multiply(m, rotation(angle));
+    if (skewX !== 0 || skewY !== 0)
+        m = multiply(m, skewing(skewX, skewY));
+    if (scaleX !== 1 || scaleY !== 1)
+        m = multiply(m, scaling(scaleX, scaleY));
+    return m;
+}
+function applyToPoint(m, p) {
+    return {
+        x: m[0] * p.x + m[2] * p.y + m[4],
+        y: m[1] * p.x + m[3] * p.y + m[5],
+    };
+}
+function determinant(m) {
+    return m[0] * m[3] - m[1] * m[2];
+}
+function invert(m) {
+    const det = determinant(m);
+    if (Math.abs(det) < 1e-12)
+        return IDENTITY; // degenerate — avoid NaN blowups
+    const [a, b, c, d, e, f] = m;
+    const invDet = 1 / det;
+    return [
+        d * invDet,
+        -b * invDet,
+        -c * invDet,
+        a * invDet,
+        (c * f - d * e) * invDet,
+        (b * e - a * f) * invDet,
+    ];
+}
+function isIdentity(m) {
+    return (m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0);
+}
+function decompose(m) {
+    const [a, b, c, d, e, f] = m;
+    const angle = Math.atan2(b, a);
+    const denom = a * a + b * b;
+    const scaleX = Math.sqrt(denom);
+    const skewX = Math.atan2(a * c + b * d, denom);
+    const scaleY = determinant(m) / (scaleX || 1);
+    return { translateX: e, translateY: f, angle, scaleX, scaleY, skewX };
+}
+/** Format for CSS/Canvas: "matrix(a,b,c,d,e,f)". */
+function toCSS(m) {
+    return `matrix(${m.map((n) => Math.round(n * 1e6) / 1e6).join(',')})`;
+}
+/** Transform an axis-aligned box, returning the AABB of the 4 mapped corners. */
+function transformBBox(m, box) {
+    const corners = [
+        applyToPoint(m, { x: box.x, y: box.y }),
+        applyToPoint(m, { x: box.x + box.w, y: box.y }),
+        applyToPoint(m, { x: box.x + box.w, y: box.y + box.h }),
+        applyToPoint(m, { x: box.x, y: box.y + box.h }),
+    ];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of corners) {
+        if (p.x < minX)
+            minX = p.x;
+        if (p.y < minY)
+            minY = p.y;
+        if (p.x > maxX)
+            maxX = p.x;
+        if (p.y > maxY)
+            maxY = p.y;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+//# sourceMappingURL=matrix.js.map
+
+// ---- dist/geometry.js
+// ---------------------------------------------------------------- node transform
+/**
+ * The node's effective affine transform, expressed around the WORLD origin
+ * but pivoting on the node's own (untransformed) bbox center — so a pure
+ * rotation/scale spins the node in place.
+ *
+ * Precedence: explicit `transform` first, else legacy `rotation`, else identity.
+ * This is the single bridge between the old rotation-field scenes and the
+ * new matrix model; every geometry op routes through it.
+ */
+function nodeMatrix(node) {
+    const local = node.transform ?? (node.rotation ? compose({ angle: node.rotation }) : null);
+    if (!local || isIdentity(local))
+        return IDENTITY;
+    const c = bboxCenter(rawBBox(node));
+    // translate(c) · local · translate(-c)
+    return multiply(multiply(translation(c.x, c.y), local), translation(-c.x, -c.y));
+}
+/** True when the node has any non-identity transform. */
+function hasTransform(node) {
+    if (node.transform)
+        return !isIdentity(node.transform);
+    return !!node.rotation;
+}
+/** Map a world point into the node's local (untransformed) space. */
+function toLocalPoint(node, p) {
+    if (!hasTransform(node))
+        return p;
+    return applyToPoint(invert(nodeMatrix(node)), p);
+}
+// ---------------------------------------------------------------- basics
+function rotatePoint(p, c, angle) {
+    if (angle === 0)
+        return { x: p.x, y: p.y };
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
+    return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+function bboxCenter(b) {
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+function bboxCorners(b) {
+    return [
+        { x: b.x, y: b.y },
+        { x: b.x + b.w, y: b.y },
+        { x: b.x + b.w, y: b.y + b.h },
+        { x: b.x, y: b.y + b.h },
+    ];
+}
+function aabbOfPoints(pts) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+        if (p.x < minX)
+            minX = p.x;
+        if (p.y < minY)
+            minY = p.y;
+        if (p.x > maxX)
+            maxX = p.x;
+        if (p.y > maxY)
+            maxY = p.y;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+// ---------------------------------------------------------------- bbox
+/**
+ * The node's own local bounding box, IGNORING its transform.
+ * For groups, this is the union of children's transformed AABBs (in the
+ * group's local space), so a group box tightly wraps its contents.
+ */
+function rawBBox(node) {
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image':
+        case 'text':
+            return { x: node.x, y: node.y, w: node.w, h: node.h };
+        case 'line': {
+            const x = Math.min(node.x1, node.x2);
+            const y = Math.min(node.y1, node.y2);
+            return { x, y, w: Math.abs(node.x2 - node.x1), h: Math.abs(node.y2 - node.y1) };
+        }
+        case 'path':
+            return node.points.length === 0
+                ? { x: 0, y: 0, w: 0, h: 0 }
+                : aabbOfPoints(node.points);
+        case 'group':
+            return unionBBox(node.children.map(getAABB));
+    }
+}
+/**
+ * Local bounding box. Kept as an alias of rawBBox for backward compatibility
+ * (callers that predate the transform model). Prefer rawBBox for the untransformed
+ * box and getAABB for the world-space, transform-aware box.
+ */
+function getBBox(node) {
+    return rawBBox(node);
+}
+/** World-space axis-aligned bounding box, including the node's full transform. */
+function getAABB(node) {
+    const box = rawBBox(node);
+    if (!hasTransform(node))
+        return box;
+    return transformBox(nodeMatrix(node), box);
+}
+function unionBBox(boxes) {
+    if (boxes.length === 0)
+        return { x: 0, y: 0, w: 0, h: 0 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const b of boxes) {
+        if (b.x < minX)
+            minX = b.x;
+        if (b.y < minY)
+            minY = b.y;
+        if (b.x + b.w > maxX)
+            maxX = b.x + b.w;
+        if (b.y + b.h > maxY)
+            maxY = b.y + b.h;
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+function bboxIntersects(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function pointInBBox(p, b, pad = 0) {
+    return (p.x >= b.x - pad && p.x <= b.x + b.w + pad &&
+        p.y >= b.y - pad && p.y <= b.y + b.h + pad);
+}
+// ---------------------------------------------------------------- polygons
+function diamondPoints(b) {
+    return [
+        { x: b.x + b.w / 2, y: b.y },
+        { x: b.x + b.w, y: b.y + b.h / 2 },
+        { x: b.x + b.w / 2, y: b.y + b.h },
+        { x: b.x, y: b.y + b.h / 2 },
+    ];
+}
+function trianglePoints(b, flipY = false) {
+    return flipY
+        ? [
+            { x: b.x, y: b.y },
+            { x: b.x + b.w, y: b.y },
+            { x: b.x + b.w / 2, y: b.y + b.h },
+        ]
+        : [
+            { x: b.x + b.w / 2, y: b.y },
+            { x: b.x + b.w, y: b.y + b.h },
+            { x: b.x, y: b.y + b.h },
+        ];
+}
+function pointInPolygon(p, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i];
+        const b = poly[j];
+        if (a.y > p.y !== b.y > p.y &&
+            p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+function nearPolygonEdge(p, poly, tol) {
+    for (let i = 0; i < poly.length; i++) {
+        if (distToSegment(p, poly[i], poly[(i + 1) % poly.length]) <= tol)
+            return true;
+    }
+    return false;
+}
+// ---------------------------------------------------------------- transforms
+/** Translate a node (and its children) in place. */
+function translateNode(node, dx, dy) {
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image':
+        case 'text':
+            node.x += dx;
+            node.y += dy;
+            break;
+        case 'line':
+            node.x1 += dx;
+            node.y1 += dy;
+            node.x2 += dx;
+            node.y2 += dy;
+            break;
+        case 'path':
+            for (const p of node.points) {
+                p.x += dx;
+                p.y += dy;
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                translateNode(child, dx, dy);
+            break;
+    }
+}
+/**
+ * Rescale `node` so that geometry expressed relative to `from` maps into `to`.
+ * `node` should hold the ORIGINAL (pre-resize) geometry; it is mutated in place.
+ * Text scales its fontSize; the engine re-measures w/h afterwards.
+ */
+function scaleNodeInto(node, from, to) {
+    const sx = from.w === 0 ? 1 : to.w / from.w;
+    const sy = from.h === 0 ? 1 : to.h / from.h;
+    const mapX = (x) => to.x + (x - from.x) * sx;
+    const mapY = (y) => to.y + (y - from.y) * sy;
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'triangle':
+        case 'image': {
+            const nx = mapX(node.x);
+            const ny = mapY(node.y);
+            node.w = node.w * sx;
+            node.h = node.h * sy;
+            node.x = nx;
+            node.y = ny;
+            if (node.type === 'rect' && node.rx)
+                node.rx *= Math.min(sx, sy);
+            break;
+        }
+        case 'text': {
+            const nx = mapX(node.x);
+            const ny = mapY(node.y);
+            node.x = nx;
+            node.y = ny;
+            node.fontSize = Math.max(4, node.fontSize * sy);
+            node.w *= sx;
+            node.h *= sy;
+            break;
+        }
+        case 'line':
+            node.x1 = mapX(node.x1);
+            node.y1 = mapY(node.y1);
+            node.x2 = mapX(node.x2);
+            node.y2 = mapY(node.y2);
+            break;
+        case 'path':
+            for (const p of node.points) {
+                p.x = mapX(p.x);
+                p.y = mapY(p.y);
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                scaleNodeInto(child, from, to);
+            break;
+    }
+}
+/** Mirror a node across a vertical (axis='h') or horizontal (axis='v') line. */
+function flipNode(node, axis, center) {
+    const fx = (x) => 2 * center.x - x;
+    const fy = (y) => 2 * center.y - y;
+    if (node.rotation)
+        node.rotation = -node.rotation;
+    switch (node.type) {
+        case 'rect':
+        case 'ellipse':
+        case 'diamond':
+        case 'text':
+            if (axis === 'h')
+                node.x = fx(node.x + node.w);
+            else
+                node.y = fy(node.y + node.h);
+            break;
+        case 'triangle':
+            if (axis === 'h')
+                node.x = fx(node.x + node.w);
+            else {
+                node.y = fy(node.y + node.h);
+                node.flipY = !node.flipY;
+            }
+            break;
+        case 'image':
+            if (axis === 'h') {
+                node.x = fx(node.x + node.w);
+                node.flipX = !node.flipX;
+            }
+            else {
+                node.y = fy(node.y + node.h);
+                node.flipY = !node.flipY;
+            }
+            break;
+        case 'line':
+            if (axis === 'h') {
+                node.x1 = fx(node.x1);
+                node.x2 = fx(node.x2);
+            }
+            else {
+                node.y1 = fy(node.y1);
+                node.y2 = fy(node.y2);
+            }
+            break;
+        case 'path':
+            for (const p of node.points) {
+                if (axis === 'h')
+                    p.x = fx(p.x);
+                else
+                    p.y = fy(p.y);
+            }
+            break;
+        case 'group':
+            for (const child of node.children)
+                flipNode(child, axis, center);
+            break;
+    }
+}
+// ---------------------------------------------------------------- hit testing
+function distToSegment(p, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + t * dx;
+    const cy = a.y + t * dy;
+    return Math.hypot(p.x - cx, p.y - cy);
+}
+/**
+ * @param tolerance hit slop in world units (scale-aware value should be passed by caller)
+ */
+function hitTestNode(node, point, tolerance) {
+    const p = toLocalPoint(node, point);
+    const tol = tolerance + node.style.strokeWidth / 2;
+    switch (node.type) {
+        case 'rect':
+        case 'image':
+        case 'text': {
+            const filled = node.type !== 'rect' || node.style.fill !== 'transparent';
+            const box = getBBox(node);
+            if (filled)
+                return pointInBBox(p, box, tol);
+            return nearPolygonEdge(p, bboxCorners(box), tol);
+        }
+        case 'ellipse': {
+            const cx = node.x + node.w / 2;
+            const cy = node.y + node.h / 2;
+            const rx = Math.max(node.w / 2, 0.001);
+            const ry = Math.max(node.h / 2, 0.001);
+            if (node.style.fill !== 'transparent') {
+                const rxOut = rx + tol, ryOut = ry + tol;
+                return ((p.x - cx) / rxOut) ** 2 + ((p.y - cy) / ryOut) ** 2 <= 1;
+            }
+            const outer = ((p.x - cx) / (rx + tol)) ** 2 + ((p.y - cy) / (ry + tol)) ** 2;
+            const rIn = Math.max(rx - tol, 0.001), ryIn = Math.max(ry - tol, 0.001);
+            const inner = ((p.x - cx) / rIn) ** 2 + ((p.y - cy) / ryIn) ** 2;
+            return outer <= 1 && inner >= 1;
+        }
+        case 'diamond': {
+            const poly = diamondPoints(getBBox(node));
+            if (node.style.fill !== 'transparent') {
+                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
+            }
+            return nearPolygonEdge(p, poly, tol);
+        }
+        case 'triangle': {
+            const poly = trianglePoints(getBBox(node), node.flipY);
+            if (node.style.fill !== 'transparent') {
+                return pointInPolygon(p, poly) || nearPolygonEdge(p, poly, tol);
+            }
+            return nearPolygonEdge(p, poly, tol);
+        }
+        case 'line':
+            return distToSegment(p, { x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }) <= tol;
+        case 'path': {
+            if (!pointInBBox(p, getBBox(node), tol))
+                return false;
+            const pts = node.points;
+            if (pts.length === 1)
+                return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol;
+            for (let i = 0; i < pts.length - 1; i++) {
+                if (distToSegment(p, pts[i], pts[i + 1]) <= tol)
+                    return true;
+            }
+            return false;
+        }
+        case 'group':
+            if (!pointInBBox(p, getBBox(node), tol))
+                return false;
+            return node.children.some((c) => hitTestNode(c, p, tolerance));
+    }
+}
+//# sourceMappingURL=geometry.js.map
+
+// ---- dist/render.js
+const LINE_HEIGHT = 1.3;
+// ---------------------------------------------------------------- text measure
+let measureCtx = null;
+function measureText(text, fontSize, fontFamily) {
+    if (!measureCtx) {
+        measureCtx = document.createElement('canvas').getContext('2d');
+    }
+    const lines = text.split('\n');
+    let w = fontSize * 0.5;
+    if (measureCtx) {
+        measureCtx.font = `${fontSize}px ${fontFamily}`;
+        for (const line of lines) {
+            w = Math.max(w, measureCtx.measureText(line).width);
+        }
+    }
+    return { w, h: Math.max(lines.length, 1) * fontSize * LINE_HEIGHT };
+}
+// ---------------------------------------------------------------- helpers
+function applyStrokeFill(ctx, node, draw) {
+    const { stroke, fill, strokeWidth } = node.style;
+    ctx.beginPath();
+    draw();
+    if (fill !== 'transparent') {
+        ctx.fillStyle = fill;
+        ctx.fill();
+    }
+    if (stroke !== 'transparent' && strokeWidth > 0) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = strokeWidth;
+        ctx.stroke();
+    }
+}
+/** Smooth polyline: quadratic curves through segment midpoints. */
+function tracePath(ctx, node) {
+    const pts = node.points;
+    if (pts.length === 0)
+        return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 1) {
+        ctx.lineTo(pts[0].x + 0.01, pts[0].y); // dot
+        return;
+    }
+    if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+        return;
+    }
+    for (let i = 1; i < pts.length - 1; i++) {
+        const midX = (pts[i].x + pts[i + 1].x) / 2;
+        const midY = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+    }
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x, last.y);
+}
+function traceRoundedRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+}
+/** Arrowhead geometry for a line ending at (x2, y2). */
+function arrowHead(x1, y1, x2, y2, size) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const a = angle + Math.PI - Math.PI / 7;
+    const b = angle + Math.PI + Math.PI / 7;
+    return [
+        { x: x2 + Math.cos(a) * size, y: y2 + Math.sin(a) * size },
+        { x: x2 + Math.cos(b) * size, y: y2 + Math.sin(b) * size },
+    ];
+}
+function renderText(ctx, node) {
+    ctx.font = `${node.fontSize}px ${node.fontFamily}`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
+    const lines = node.text.split('\n');
+    const lh = node.fontSize * LINE_HEIGHT;
+    const pad = (lh - node.fontSize) / 2;
+    lines.forEach((line, i) => {
+        ctx.fillText(line, node.x, node.y + i * lh + pad);
+    });
+}
+function renderNode(ctx, node, images, options = {}) {
+    if (options.skipId && node.id === options.skipId)
+        return;
+    ctx.save();
+    ctx.globalAlpha *= node.style.opacity;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const m = nodeMatrix(node);
+    if (!isIdentity(m)) {
+        ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    }
+    switch (node.type) {
+        case 'path':
+            applyStrokeFill(ctx, node, () => tracePath(ctx, node));
+            break;
+        case 'rect':
+            applyStrokeFill(ctx, node, () => {
+                if (node.rx && node.rx > 0)
+                    traceRoundedRect(ctx, node.x, node.y, node.w, node.h, node.rx);
+                else
+                    ctx.rect(node.x, node.y, node.w, node.h);
+            });
+            break;
+        case 'ellipse':
+            applyStrokeFill(ctx, node, () => ctx.ellipse(node.x + node.w / 2, node.y + node.h / 2, Math.max(node.w / 2, 0), Math.max(node.h / 2, 0), 0, 0, Math.PI * 2));
+            break;
+        case 'diamond':
+            applyStrokeFill(ctx, node, () => {
+                const pts = diamondPoints(getBBox(node));
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++)
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.closePath();
+            });
+            break;
+        case 'triangle':
+            applyStrokeFill(ctx, node, () => {
+                const pts = trianglePoints(getBBox(node), node.flipY);
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++)
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.closePath();
+            });
+            break;
+        case 'line':
+            applyStrokeFill(ctx, node, () => {
+                ctx.moveTo(node.x1, node.y1);
+                ctx.lineTo(node.x2, node.y2);
+                if (node.arrow) {
+                    const size = Math.max(10, node.style.strokeWidth * 3.2);
+                    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(node.x2, node.y2);
+                    ctx.lineTo(b.x, b.y);
+                }
+            });
+            break;
+        case 'text':
+            renderText(ctx, node);
+            break;
+        case 'image': {
+            const img = images.get(node.src);
+            if (img && img.complete && img.naturalWidth > 0) {
+                if (node.flipX || node.flipY) {
+                    const cx = node.x + node.w / 2;
+                    const cy = node.y + node.h / 2;
+                    ctx.translate(cx, cy);
+                    ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
+                    ctx.translate(-cx, -cy);
+                }
+                ctx.drawImage(img, node.x, node.y, node.w, node.h);
+            }
+            else {
+                ctx.fillStyle = 'rgba(0,0,0,0.06)';
+                ctx.fillRect(node.x, node.y, node.w, node.h);
+                ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.strokeRect(node.x, node.y, node.w, node.h);
+                ctx.setLineDash([]);
+            }
+            break;
+        }
+        case 'group':
+            for (const child of node.children)
+                renderNode(ctx, child, images, options);
+            break;
+    }
+    ctx.restore();
+}
+function renderScene(ctx, nodes, images, options = {}) {
+    for (const node of nodes)
+        renderNode(ctx, node, images, options);
+}
+//# sourceMappingURL=render.js.map
+
+// ---- dist/svg.js
+const fmt = (n) => String(Math.round(n * 100) / 100);
+function escapeXML(s) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+function styleAttrs(node) {
+    const { stroke, fill, strokeWidth, opacity } = node.style;
+    const parts = [
+        `fill="${fill === 'transparent' ? 'none' : fill}"`,
+        `stroke="${stroke === 'transparent' ? 'none' : stroke}"`,
+        `stroke-width="${fmt(strokeWidth)}"`,
+        'stroke-linecap="round"',
+        'stroke-linejoin="round"',
+    ];
+    if (opacity !== 1)
+        parts.push(`opacity="${fmt(opacity)}"`);
+    return parts.join(' ');
+}
+function rotationAttr(node) {
+    const m = nodeMatrix(node);
+    if (isIdentity(m))
+        return '';
+    return ` transform="${toCSS(m)}"`;
+}
+function pathD(node) {
+    const pts = node.points;
+    if (pts.length === 0)
+        return '';
+    let d = `M ${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
+    if (pts.length === 1)
+        return d + ` L ${fmt(pts[0].x + 0.01)} ${fmt(pts[0].y)}`;
+    if (pts.length === 2)
+        return d + ` L ${fmt(pts[1].x)} ${fmt(pts[1].y)}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2;
+        const my = (pts[i].y + pts[i + 1].y) / 2;
+        d += ` Q ${fmt(pts[i].x)} ${fmt(pts[i].y)} ${fmt(mx)} ${fmt(my)}`;
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L ${fmt(last.x)} ${fmt(last.y)}`;
+}
+function lineSVG(node) {
+    const attr = rotationAttr(node);
+    if (!node.arrow) {
+        return `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}${attr}/>`;
+    }
+    const size = Math.max(10, node.style.strokeWidth * 3.2);
+    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
+    const line = `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}/>`;
+    const head = `<polyline points="${fmt(a.x)},${fmt(a.y)} ${fmt(node.x2)},${fmt(node.y2)} ${fmt(b.x)},${fmt(b.y)}" ${styleAttrs(node)}/>`;
+    return `<g${attr}>${line}${head}</g>`;
+}
+function polygonSVG(node, pts) {
+    const points = pts.map((p) => `${fmt(p.x)},${fmt(p.y)}`).join(' ');
+    return `<polygon points="${points}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+}
+function nodeToSVG(node) {
+    switch (node.type) {
+        case 'path':
+            return `<path d="${pathD(node)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'rect':
+            return `<rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"${node.rx ? ` rx="${fmt(node.rx)}"` : ''} ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'ellipse':
+            return `<ellipse cx="${fmt(node.x + node.w / 2)}" cy="${fmt(node.y + node.h / 2)}" rx="${fmt(node.w / 2)}" ry="${fmt(node.h / 2)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
+        case 'diamond':
+            return polygonSVG(node, diamondPoints(getBBox(node)));
+        case 'triangle':
+            return polygonSVG(node, trianglePoints(getBBox(node), node.flipY));
+        case 'line':
+            return lineSVG(node);
+        case 'text': {
+            const lh = node.fontSize * LINE_HEIGHT;
+            const pad = (lh - node.fontSize) / 2;
+            const color = node.style.stroke === 'transparent' ? '#000' : node.style.stroke;
+            const tspans = node.text
+                .split('\n')
+                .map((line, i) => `<tspan x="${fmt(node.x)}" y="${fmt(node.y + i * lh + pad)}">${escapeXML(line) || ' '}</tspan>`)
+                .join('');
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            return `<text font-family="${escapeXML(node.fontFamily)}" font-size="${fmt(node.fontSize)}" fill="${color}" dominant-baseline="text-before-edge"${op}${rotationAttr(node)}>${tspans}</text>`;
+        }
+        case 'image': {
+            const sx = node.flipX ? -1 : 1;
+            const sy = node.flipY ? -1 : 1;
+            const flip = node.flipX || node.flipY
+                ? ` transform="translate(${fmt(node.x + node.w / 2)} ${fmt(node.y + node.h / 2)}) scale(${sx} ${sy}) translate(${fmt(-(node.x + node.w / 2))} ${fmt(-(node.y + node.h / 2))})"`
+                : '';
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            const inner = `<image x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}" href="${escapeXML(node.src)}" preserveAspectRatio="none"${op}${flip}/>`;
+            const rot = rotationAttr(node);
+            return rot ? `<g${rot}>${inner}</g>` : inner;
+        }
+        case 'group': {
+            const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
+            return `<g${op}${rotationAttr(node)}>${node.children.map(nodeToSVG).join('')}</g>`;
+        }
+    }
+}
+function sceneToSVG(nodes, options = {}) {
+    const padding = options.padding ?? 24;
+    const box = nodes.length > 0 ? unionBBox(nodes.map(getAABB)) : { x: 0, y: 0, w: 100, h: 100 };
+    const x = box.x - padding;
+    const y = box.y - padding;
+    const w = box.w + padding * 2;
+    const h = box.h + padding * 2;
+    const bg = options.background
+        ? `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="${options.background}"/>`
+        : '';
+    return (`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(x)} ${fmt(y)} ${fmt(w)} ${fmt(h)}" width="${fmt(w)}" height="${fmt(h)}">` +
+        bg +
+        nodes.map(nodeToSVG).join('') +
+        `</svg>`);
+}
+//# sourceMappingURL=svg.js.map
+
+// ---- dist/core.js
+// ---------------------------------------------------------------- emitter
+class Emitter {
+    constructor() {
+        this.listeners = new Map();
+    }
+    on(event, fn) {
+        let set = this.listeners.get(event);
+        if (!set) {
+            set = new Set();
+            this.listeners.set(event, set);
+        }
+        set.add(fn);
+        return () => this.off(event, fn);
+    }
+    off(event, fn) {
+        this.listeners.get(event)?.delete(fn);
+    }
+    emit(event, payload) {
+        this.listeners.get(event)?.forEach((fn) => fn(payload));
+    }
+    clear() {
+        this.listeners.clear();
+    }
+}
+// ---------------------------------------------------------------- history
+/**
+ * Snapshot-based undo/redo. Snapshots are JSON strings of the scene.
+ * Simple and bulletproof for v0.1 — can move to command pattern later.
+ */
+class History {
+    constructor(initial, limit = 100) {
+        this.stack = [];
+        this.index = -1;
+        this.limit = limit;
+        this.stack.push(initial);
+        this.index = 0;
+    }
+    /** Record a new state. Drops any redo branch. */
+    push(snapshot) {
+        if (snapshot === this.stack[this.index])
+            return; // no-op change
+        this.stack = this.stack.slice(0, this.index + 1);
+        this.stack.push(snapshot);
+        if (this.stack.length > this.limit)
+            this.stack.shift();
+        this.index = this.stack.length - 1;
+    }
+    undo() {
+        if (!this.canUndo)
+            return null;
+        this.index -= 1;
+        return this.stack[this.index];
+    }
+    redo() {
+        if (!this.canRedo)
+            return null;
+        this.index += 1;
+        return this.stack[this.index];
+    }
+    get canUndo() {
+        return this.index > 0;
+    }
+    get canRedo() {
+        return this.index < this.stack.length - 1;
+    }
+    reset(initial) {
+        this.stack = [initial];
+        this.index = 0;
+    }
+}
+//# sourceMappingURL=core.js.map
+
+// ---- dist/spatial.js
+const MAX_ITEMS = 8; // split threshold
+const MAX_DEPTH = 8;
+class Quadtree {
+    constructor(bounds, depth = 0) {
+        this.items = [];
+        this.nodes = null;
+        this.bounds = bounds;
+        this.depth = depth;
+    }
+    clear() {
+        this.items = [];
+        this.nodes = null;
+    }
+    insert(item) {
+        if (this.nodes) {
+            const i = this.quadrantFor(item.box);
+            if (i !== -1) {
+                this.nodes[i].insert(item);
+                return;
+            }
+        }
+        this.items.push(item);
+        if (this.items.length > MAX_ITEMS && this.depth < MAX_DEPTH) {
+            if (!this.nodes)
+                this.split();
+            // redistribute items that fit cleanly into a child quadrant
+            const kept = [];
+            for (const it of this.items) {
+                const i = this.quadrantFor(it.box);
+                if (i !== -1 && this.nodes)
+                    this.nodes[i].insert(it);
+                else
+                    kept.push(it);
+            }
+            this.items = kept;
+        }
+    }
+    /** All ids whose box intersects the query box. */
+    queryBox(box, out = new Set()) {
+        if (!bboxIntersects(this.bounds, box))
+            return out;
+        for (const it of this.items) {
+            if (bboxIntersects(it.box, box))
+                out.add(it.id);
+        }
+        if (this.nodes) {
+            for (const child of this.nodes)
+                child.queryBox(box, out);
+        }
+        return out;
+    }
+    /** All ids whose box contains the point (with optional padding). */
+    queryPoint(x, y, pad = 0, out = new Set()) {
+        const p = { x, y };
+        if (!pointInBBox(p, this.bounds, pad))
+            return out;
+        for (const it of this.items) {
+            if (pointInBBox(p, it.box, pad))
+                out.add(it.id);
+        }
+        if (this.nodes) {
+            for (const child of this.nodes)
+                child.queryPoint(x, y, pad, out);
+        }
+        return out;
+    }
+    split() {
+        const { x, y, w, h } = this.bounds;
+        const hw = w / 2;
+        const hh = h / 2;
+        const d = this.depth + 1;
+        this.nodes = [
+            new Quadtree({ x, y, w: hw, h: hh }, d), // NW
+            new Quadtree({ x: x + hw, y, w: hw, h: hh }, d), // NE
+            new Quadtree({ x, y: y + hh, w: hw, h: hh }, d), // SW
+            new Quadtree({ x: x + hw, y: y + hh, w: hw, h: hh }, d), // SE
+        ];
+    }
+    /** Which child quadrant fully contains the box, or -1 if it straddles. */
+    quadrantFor(box) {
+        if (!this.nodes)
+            return -1;
+        for (let i = 0; i < 4; i++) {
+            const b = this.nodes[i].bounds;
+            if (box.x >= b.x && box.x + box.w <= b.x + b.w &&
+                box.y >= b.y && box.y + box.h <= b.y + b.h) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    /** Build an index sized to fit all items (with a margin). */
+    static build(items, margin = 100) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const it of items) {
+            minX = Math.min(minX, it.box.x);
+            minY = Math.min(minY, it.box.y);
+            maxX = Math.max(maxX, it.box.x + it.box.w);
+            maxY = Math.max(maxY, it.box.y + it.box.h);
+        }
+        if (!Number.isFinite(minX)) {
+            minX = 0;
+            minY = 0;
+            maxX = 1;
+            maxY = 1;
+        }
+        const bounds = {
+            x: minX - margin,
+            y: minY - margin,
+            w: maxX - minX + margin * 2,
+            h: maxY - minY + margin * 2,
+        };
+        const tree = new Quadtree(bounds);
+        for (const it of items)
+            tree.insert(it);
+        return tree;
+    }
+}
+//# sourceMappingURL=spatial.js.map
+
+// ---- dist/dohwa.js
+let idCounter = 0;
+function genId() {
+    idCounter += 1;
+    return `n${Date.now().toString(36)}${idCounter.toString(36)}`;
+}
+function deepClone(v) {
+    return JSON.parse(JSON.stringify(v));
+}
+/** handle factors: 0..7 → nw, n, ne, e, se, s, sw, w */
+const HANDLES = [
+    { hx: 0, hy: 0, cursor: 'nwse-resize' },
+    { hx: 0.5, hy: 0, cursor: 'ns-resize' },
+    { hx: 1, hy: 0, cursor: 'nesw-resize' },
+    { hx: 1, hy: 0.5, cursor: 'ew-resize' },
+    { hx: 1, hy: 1, cursor: 'nwse-resize' },
+    { hx: 0.5, hy: 1, cursor: 'ns-resize' },
+    { hx: 0, hy: 1, cursor: 'nesw-resize' },
+    { hx: 0, hy: 0.5, cursor: 'ew-resize' },
+];
+const SELECTION_COLOR = '#4467ff';
+const ROTATE_OFFSET = 26; // screen px above the frame
+class Dohwa {
+    constructor(container, options = {}) {
+        this.nodes = [];
+        this.spatialIndex = null;
+        this.spatialDirty = true;
+        this.idToIndex = new Map();
+        this.selection = new Set();
+        this.tool = 'pen';
+        this.style = { ...DEFAULT_STYLE };
+        this.viewport = { x: 0, y: 0, scale: 1 };
+        this.images = new Map();
+        this.mode = { kind: 'none' };
+        this.spaceDown = false;
+        this.clipboard = [];
+        this.editing = null;
+        this.replaying = false;
+        this.timeline = [];
+        this.emitter = new Emitter();
+        this.rafId = 0;
+        this.disposed = false;
+        this.detachFns = [];
+        this.container = container;
+        this.tool = options.tool ?? 'pen';
+        this.style = { ...DEFAULT_STYLE, ...options.style };
+        this.background = options.background ?? 'transparent';
+        this.fontFamily = options.fontFamily ?? 'sans-serif';
+        this.fontSize = options.fontSize ?? 28;
+        this.minZoom = options.minZoom ?? 0.1;
+        this.maxZoom = options.maxZoom ?? 8;
+        if (getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+        }
+        this.canvas = document.createElement('canvas');
+        this.canvas.style.display = 'block';
+        this.canvas.style.width = '100%';
+        this.canvas.style.height = '100%';
+        this.canvas.style.touchAction = 'none';
+        container.appendChild(this.canvas);
+        const ctx = this.canvas.getContext('2d');
+        if (!ctx)
+            throw new Error('dohwa: 2d context unavailable');
+        this.ctx = ctx;
+        const initial = this.serialize();
+        this.history = new History(initial);
+        this.timeline.push(initial);
+        this.resizeObserver = new ResizeObserver(() => this.syncCanvasSize());
+        this.resizeObserver.observe(container);
+        this.syncCanvasSize();
+        this.bindEvents();
+        this.requestRender();
+    }
+    // ================================================================ events API
+    on(event, fn) {
+        return this.emitter.on(event, fn);
+    }
+    // ================================================================ tools / style
+    getTool() {
+        return this.tool;
+    }
+    setTool(tool) {
+        if (this.tool === tool)
+            return;
+        this.finishTextEdit();
+        this.tool = tool;
+        if (tool !== 'select')
+            this.clearSelection();
+        this.updateCursor();
+        this.emitter.emit('tool', tool);
+        this.requestRender();
+    }
+    getStyle() {
+        return { ...this.style };
+    }
+    /** Sets the style for new nodes AND applies it to the current selection. */
+    setStyle(patch) {
+        this.style = { ...this.style, ...patch };
+        if (this.selection.size > 0) {
+            const apply = (node) => {
+                node.style = { ...node.style, ...patch };
+                if (node.type === 'group')
+                    node.children.forEach(apply);
+            };
+            this.selectedNodes().forEach(apply);
+            this.commit();
+        }
+        this.requestRender();
+    }
+    // ================================================================ selection
+    getNodes() {
+        return deepClone(this.nodes);
+    }
+    getSelectedIds() {
+        return [...this.selection];
+    }
+    selectAll() {
+        this.selection = new Set(this.nodes.filter((n) => !n.locked).map((n) => n.id));
+        this.emitSelection();
+        this.requestRender();
+    }
+    clearSelection() {
+        if (this.selection.size === 0)
+            return;
+        this.selection.clear();
+        this.emitSelection();
+        this.requestRender();
+    }
+    deleteSelection() {
+        if (this.selection.size === 0)
+            return;
+        this.nodes = this.nodes.filter((n) => !this.selection.has(n.id));
+        this.selection.clear();
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    duplicateSelection() {
+        const clones = this.selectedNodes().map((n) => {
+            const clone = deepClone(n);
+            this.reassignIds(clone);
+            translateNode(clone, 16, 16);
+            return clone;
+        });
+        if (clones.length === 0)
+            return;
+        this.nodes.push(...clones);
+        this.selection = new Set(clones.map((c) => c.id));
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    // ================================================================ clipboard
+    copySelection() {
+        if (this.selection.size === 0)
+            return;
+        this.clipboard = this.selectedNodes().map((n) => deepClone(n));
+    }
+    cutSelection() {
+        if (this.selection.size === 0)
+            return;
+        this.copySelection();
+        this.deleteSelection();
+    }
+    paste() {
+        if (this.clipboard.length === 0)
+            return;
+        const clones = this.clipboard.map((n) => {
+            const clone = deepClone(n);
+            this.reassignIds(clone);
+            translateNode(clone, 16, 16);
+            return clone;
+        });
+        this.nodes.push(...clones);
+        this.setTool('select');
+        this.selection = new Set(clones.map((c) => c.id));
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    // ================================================================ group / order
+    /** Group the current selection (2+ nodes) into one GroupNode. */
+    group() {
+        const selected = this.selectedNodes();
+        if (selected.length < 2)
+            return;
+        const group = {
+            id: genId(),
+            type: 'group',
+            style: { ...DEFAULT_STYLE, opacity: 1 },
+            children: selected.map((n) => deepClone(n)),
+        };
+        const topIndex = Math.max(...selected.map((n) => this.nodes.indexOf(n)));
+        this.nodes = this.nodes.filter((n) => !this.selection.has(n.id));
+        const insertAt = Math.min(topIndex - (selected.length - 1), this.nodes.length);
+        this.nodes.splice(Math.max(insertAt, 0), 0, group);
+        this.selection = new Set([group.id]);
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    /** Ungroup any selected GroupNodes back into top-level nodes. */
+    ungroup() {
+        const next = [];
+        const newSelection = new Set();
+        let changed = false;
+        for (const node of this.nodes) {
+            if (this.selection.has(node.id) && node.type === 'group') {
+                const r = node.rotation ?? 0;
+                const c = bboxCenter(getBBox(node));
+                for (const child of node.children) {
+                    if (r !== 0) {
+                        // bake the group's rotation into each child
+                        const childCenter = bboxCenter(getBBox(child));
+                        const moved = rotatePoint(childCenter, c, r);
+                        translateNode(child, moved.x - childCenter.x, moved.y - childCenter.y);
+                        child.rotation = (child.rotation ?? 0) + r;
+                    }
+                    next.push(child);
+                    newSelection.add(child.id);
+                }
+                changed = true;
+            }
+            else {
+                next.push(node);
+                if (this.selection.has(node.id))
+                    newSelection.add(node.id);
+            }
+        }
+        if (!changed)
+            return;
+        this.nodes = next;
+        this.selection = newSelection;
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    bringToFront() {
+        this.reorder((selected, rest) => [...rest, ...selected]);
+    }
+    sendToBack() {
+        this.reorder((selected, rest) => [...selected, ...rest]);
+    }
+    // ================================================================ flip / lock
+    flipSelection(axis) {
+        const selected = this.selectedNodes();
+        if (selected.length === 0)
+            return;
+        const center = bboxCenter(unionBBox(selected.map(getAABB)));
+        for (const n of selected)
+            flipNode(n, axis, center);
+        this.commit();
+        this.requestRender();
+    }
+    lockSelection() {
+        const selected = this.selectedNodes();
+        if (selected.length === 0)
+            return;
+        for (const n of selected)
+            n.locked = true;
+        this.selection.clear();
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    unlockAll() {
+        let changed = false;
+        for (const n of this.nodes) {
+            if (n.locked) {
+                n.locked = false;
+                changed = true;
+            }
+        }
+        if (!changed)
+            return;
+        this.commit();
+        this.requestRender();
+    }
+    hasLockedNodes() {
+        return this.nodes.some((n) => n.locked);
+    }
+    // ================================================================ text
+    /** Add a text node programmatically. */
+    addText(text, at, fontSize) {
+        const fs = fontSize ?? this.fontSize;
+        const m = measureText(text, fs, this.fontFamily);
+        const pos = at ?? this.viewCenterWorld();
+        const node = {
+            id: genId(),
+            type: 'text',
+            x: pos.x,
+            y: pos.y,
+            text,
+            fontSize: fs,
+            fontFamily: this.fontFamily,
+            w: m.w,
+            h: m.h,
+            style: { ...this.style, fill: 'transparent' },
+        };
+        this.nodes.push(node);
+        this.commit();
+        this.requestRender();
+        return node;
+    }
+    /** Begin inline editing for a text node (creates a floating textarea). */
+    startTextEdit(node) {
+        this.finishTextEdit();
+        const el = document.createElement('textarea');
+        const screen = this.worldToScreen({ x: node.x, y: node.y });
+        const s = this.viewport.scale;
+        Object.assign(el.style, {
+            position: 'absolute',
+            left: `${screen.x - 2}px`,
+            top: `${screen.y - 2}px`,
+            fontSize: `${node.fontSize * s}px`,
+            lineHeight: String(LINE_HEIGHT),
+            fontFamily: node.fontFamily,
+            color: node.style.stroke === 'transparent' ? '#000' : node.style.stroke,
+            background: 'transparent',
+            border: `1px dashed ${SELECTION_COLOR}`,
+            borderRadius: '3px',
+            padding: '1px',
+            margin: '0',
+            outline: 'none',
+            resize: 'none',
+            overflow: 'hidden',
+            whiteSpace: 'pre',
+            minWidth: '24px',
+            zIndex: '10',
+        });
+        el.value = node.text;
+        const autosize = () => {
+            el.style.width = '0';
+            el.style.height = '0';
+            el.style.width = `${el.scrollWidth + node.fontSize * s}px`;
+            el.style.height = `${el.scrollHeight}px`;
+        };
+        el.addEventListener('input', autosize);
+        el.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+                this.finishTextEdit();
+            }
+        });
+        el.addEventListener('blur', () => this.finishTextEdit());
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        this.container.appendChild(el);
+        this.editing = { node, el };
+        requestAnimationFrame(() => {
+            autosize();
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length);
+        });
+        this.emitter.emit('textedit', node.id);
+        this.requestRender();
+    }
+    finishTextEdit() {
+        if (!this.editing)
+            return;
+        const { node, el } = this.editing;
+        this.editing = null;
+        const text = el.value.replace(/\s+$/g, '');
+        el.remove();
+        if (text.trim() === '') {
+            this.nodes = this.nodes.filter((n) => n.id !== node.id);
+            this.selection.delete(node.id);
+            this.emitSelection();
+        }
+        else {
+            node.text = text;
+            const m = measureText(text, node.fontSize, node.fontFamily);
+            node.w = m.w;
+            node.h = m.h;
+        }
+        this.commit();
+        this.emitter.emit('textedit', null);
+        this.requestRender();
+    }
+    // ================================================================ images
+    /** Add an image from a URL or dataURL at the viewport center. */
+    addImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                this.images.set(src, img);
+                const maxSide = 480;
+                const ratio = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+                const w = img.naturalWidth * ratio;
+                const h = img.naturalHeight * ratio;
+                const center = this.viewCenterWorld();
+                const node = {
+                    id: genId(),
+                    type: 'image',
+                    x: center.x - w / 2,
+                    y: center.y - h / 2,
+                    w,
+                    h,
+                    src,
+                    style: { ...DEFAULT_STYLE, stroke: 'transparent' },
+                };
+                this.nodes.push(node);
+                this.setTool('select');
+                this.selection = new Set([node.id]);
+                this.emitSelection();
+                this.commit();
+                this.requestRender();
+                resolve(node);
+            };
+            img.onerror = () => reject(new Error('dohwa: failed to load image'));
+            img.src = src;
+        });
+    }
+    /** Add an image from a File (e.g. <input type=file> or drag & drop). */
+    addImageFromFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                this.addImage(reader.result).then(resolve, reject);
+            };
+            reader.onerror = () => reject(new Error('dohwa: failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    }
+    // ================================================================ history / replay
+    undo() {
+        this.finishTextEdit();
+        const snapshot = this.history.undo();
+        if (snapshot !== null)
+            this.restore(snapshot);
+    }
+    redo() {
+        const snapshot = this.history.redo();
+        if (snapshot !== null)
+            this.restore(snapshot);
+    }
+    getHistoryState() {
+        return { canUndo: this.history.canUndo, canRedo: this.history.canRedo };
+    }
+    /** Append-only chronology of every committed state (true drawing order). */
+    getTimeline() {
+        return [...this.timeline];
+    }
+    /** id of the text node currently being edited inline, or null. */
+    getEditingTextId() {
+        return this.editing?.node.id ?? null;
+    }
+    isReplaying() {
+        return this.replaying;
+    }
+    /** Replay the drawing chronology from the first stroke to now. */
+    async replay(options = {}) {
+        if (this.replaying || this.timeline.length < 2)
+            return;
+        this.finishTextEdit();
+        this.replaying = true;
+        this.emitter.emit('replay', true);
+        const saved = this.serialize();
+        const delay = 1000 / (options.fps ?? 5);
+        for (const snap of this.timeline) {
+            if (this.disposed)
+                return;
+            this.nodes = JSON.parse(snap).nodes;
+            this.preloadImages(this.nodes);
+            this.render();
+            await new Promise((r) => setTimeout(r, delay));
+        }
+        this.nodes = JSON.parse(saved).nodes;
+        this.replaying = false;
+        this.emitter.emit('replay', false);
+        this.requestRender();
+    }
+    clear() {
+        if (this.nodes.length === 0)
+            return;
+        this.finishTextEdit();
+        this.nodes = [];
+        this.selection.clear();
+        this.emitSelection();
+        this.commit();
+        this.requestRender();
+    }
+    // ================================================================ viewport
+    getViewport() {
+        return { ...this.viewport };
+    }
+    setZoom(scale, screenAnchor) {
+        const anchor = screenAnchor ?? {
+            x: this.canvas.clientWidth / 2,
+            y: this.canvas.clientHeight / 2,
+        };
+        const before = this.screenToWorld(anchor);
+        this.viewport.scale = Math.min(this.maxZoom, Math.max(this.minZoom, scale));
+        const after = this.screenToWorld(anchor);
+        this.viewport.x += (after.x - before.x) * this.viewport.scale;
+        this.viewport.y += (after.y - before.y) * this.viewport.scale;
+        this.emitter.emit('viewport', this.getViewport());
+        this.requestRender();
+    }
+    zoomIn() {
+        this.setZoom(this.viewport.scale * 1.2);
+    }
+    zoomOut() {
+        this.setZoom(this.viewport.scale / 1.2);
+    }
+    resetView() {
+        this.viewport = { x: 0, y: 0, scale: 1 };
+        this.emitter.emit('viewport', this.getViewport());
+        this.requestRender();
+    }
+    /** Fit all content into the view with padding. */
+    zoomToFit(padding = 48) {
+        if (this.nodes.length === 0) {
+            this.resetView();
+            return;
+        }
+        const box = unionBBox(this.nodes.map(getAABB));
+        const cw = this.canvas.clientWidth;
+        const ch = this.canvas.clientHeight;
+        const scale = Math.min(this.maxZoom, Math.max(this.minZoom, Math.min((cw - padding * 2) / Math.max(box.w, 1), (ch - padding * 2) / Math.max(box.h, 1))));
+        this.viewport = {
+            scale,
+            x: cw / 2 - (box.x + box.w / 2) * scale,
+            y: ch / 2 - (box.y + box.h / 2) * scale,
+        };
+        this.emitter.emit('viewport', this.getViewport());
+        this.requestRender();
+    }
+    // ================================================================ io
+    toJSON() {
+        return { app: 'dohwa', version: 1, nodes: deepClone(this.nodes) };
+    }
+    loadJSON(json) {
+        const data = typeof json === 'string' ? JSON.parse(json) : json;
+        if (!data || !Array.isArray(data.nodes))
+            throw new Error('dohwa: invalid scene JSON');
+        this.finishTextEdit();
+        this.nodes = deepClone(data.nodes);
+        this.selection.clear();
+        this.preloadImages(this.nodes);
+        const snap = this.serialize();
+        this.history.reset(snap);
+        this.timeline = [snap];
+        this.emitSelection();
+        this.emitChange();
+        this.requestRender();
+    }
+    /** Render content to a PNG dataURL. */
+    exportPNG(options = {}) {
+        const scale = options.scale ?? 2;
+        const padding = options.padding ?? 24;
+        const box = this.nodes.length > 0
+            ? unionBBox(this.nodes.map(getAABB))
+            : { x: 0, y: 0, w: this.canvas.clientWidth, h: this.canvas.clientHeight };
+        const w = Math.max(1, Math.ceil((box.w + padding * 2) * scale));
+        const h = Math.max(1, Math.ceil((box.h + padding * 2) * scale));
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        const ctx = off.getContext('2d');
+        if (!ctx)
+            throw new Error('dohwa: 2d context unavailable');
+        if (options.background) {
+            ctx.fillStyle = options.background;
+            ctx.fillRect(0, 0, w, h);
+        }
+        ctx.scale(scale, scale);
+        ctx.translate(padding - box.x, padding - box.y);
+        renderScene(ctx, this.nodes, this.images);
+        return off.toDataURL('image/png');
+    }
+    /** Export the scene as a standalone SVG string. */
+    exportSVG(options = {}) {
+        return sceneToSVG(this.nodes, options);
+    }
+    destroy() {
+        this.disposed = true;
+        this.finishTextEdit();
+        cancelAnimationFrame(this.rafId);
+        this.resizeObserver.disconnect();
+        this.detachFns.forEach((fn) => fn());
+        this.emitter.clear();
+        this.canvas.remove();
+    }
+    // ================================================================ internals
+    viewCenterWorld() {
+        return this.screenToWorld({
+            x: this.canvas.clientWidth / 2,
+            y: this.canvas.clientHeight / 2,
+        });
+    }
+    selectedNodes() {
+        return this.nodes.filter((n) => this.selection.has(n.id));
+    }
+    reorder(fn) {
+        if (this.selection.size === 0)
+            return;
+        const selected = this.selectedNodes();
+        const rest = this.nodes.filter((n) => !this.selection.has(n.id));
+        this.nodes = fn(selected, rest);
+        this.commit();
+        this.requestRender();
+    }
+    reassignIds(node) {
+        node.id = genId();
+        if (node.type === 'group')
+            node.children.forEach((c) => this.reassignIds(c));
+    }
+    preloadImages(nodes) {
+        for (const node of nodes) {
+            if (node.type === 'image' && !this.images.has(node.src)) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => this.requestRender();
+                img.src = node.src;
+                this.images.set(node.src, img);
+            }
+            else if (node.type === 'group') {
+                this.preloadImages(node.children);
+            }
+        }
+    }
+    remeasureTexts(nodes) {
+        for (const node of nodes) {
+            if (node.type === 'text') {
+                const m = measureText(node.text, node.fontSize, node.fontFamily);
+                node.w = m.w;
+                node.h = m.h;
+            }
+            else if (node.type === 'group') {
+                this.remeasureTexts(node.children);
+            }
+        }
+    }
+    serialize() {
+        return JSON.stringify({ app: 'dohwa', version: 1, nodes: this.nodes });
+    }
+    restore(snapshot) {
+        const data = JSON.parse(snapshot);
+        this.nodes = data.nodes;
+        this.invalidateIndex();
+        this.selection = new Set([...this.selection].filter((id) => this.nodes.some((n) => n.id === id)));
+        this.preloadImages(this.nodes);
+        this.emitSelection();
+        this.emitChange();
+        this.requestRender();
+    }
+    /** Record the current state into history + timeline and notify listeners. */
+    commit() {
+        this.remeasureTexts(this.nodes);
+        this.invalidateIndex();
+        const snap = this.serialize();
+        this.history.push(snap);
+        if (this.timeline[this.timeline.length - 1] !== snap) {
+            this.timeline.push(snap);
+            if (this.timeline.length > 600)
+                this.timeline.shift();
+        }
+        this.emitChange();
+    }
+    emitChange() {
+        this.emitter.emit('change');
+        this.emitter.emit('history', this.getHistoryState());
+    }
+    emitSelection() {
+        this.emitter.emit('selection', this.getSelectedIds());
+    }
+    // ---------------------------------------------------------------- coords
+    screenToWorld(p) {
+        return {
+            x: (p.x - this.viewport.x) / this.viewport.scale,
+            y: (p.y - this.viewport.y) / this.viewport.scale,
+        };
+    }
+    worldToScreen(p) {
+        return {
+            x: p.x * this.viewport.scale + this.viewport.x,
+            y: p.y * this.viewport.scale + this.viewport.y,
+        };
+    }
+    pointerPos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.x, y: e.clientY - rect.y };
+    }
+    // ---------------------------------------------------------------- canvas / loop
+    syncCanvasSize() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        if (w === 0 || h === 0)
+            return;
+        this.canvas.width = Math.round(w * dpr);
+        this.canvas.height = Math.round(h * dpr);
+        this.requestRender();
+    }
+    requestRender() {
+        if (this.rafId || this.disposed)
+            return;
+        this.rafId = requestAnimationFrame(() => {
+            this.rafId = 0;
+            this.render();
+        });
+    }
+    render() {
+        const dpr = window.devicePixelRatio || 1;
+        const ctx = this.ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+        if (this.background !== 'transparent') {
+            ctx.fillStyle = this.background;
+            ctx.fillRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+        }
+        ctx.save();
+        ctx.translate(this.viewport.x, this.viewport.y);
+        ctx.scale(this.viewport.scale, this.viewport.scale);
+        const visible = this.visibleNodes();
+        renderScene(ctx, visible, this.images, { skipId: this.editing?.node.id ?? null });
+        ctx.restore();
+        if (!this.replaying)
+            this.renderOverlay(ctx);
+    }
+    /**
+     * Viewport culling: only nodes whose world AABB overlaps the visible region.
+     * On an infinite canvas most content is usually off-screen, so this bounds
+     * per-frame cost by what's actually in view rather than the scene size.
+     * Below a threshold the cull isn't worth the AABB math, so we skip it.
+     */
+    visibleNodes() {
+        if (this.nodes.length < 200)
+            return this.nodes;
+        // During an active drag the index is intentionally stale; rebuilding it
+        // every frame would cost more than culling saves, so draw everything.
+        if (this.mode.kind === 'move' || this.mode.kind === 'resize' || this.mode.kind === 'rotate') {
+            return this.nodes;
+        }
+        const inv = 1 / this.viewport.scale;
+        const margin = 32 * inv;
+        const view = {
+            x: -this.viewport.x * inv - margin,
+            y: -this.viewport.y * inv - margin,
+            w: this.canvas.clientWidth * inv + margin * 2,
+            h: this.canvas.clientHeight * inv + margin * 2,
+        };
+        const ids = this.ensureIndex().queryBox(view);
+        // preserve z-order by filtering the original array
+        return this.nodes.filter((n) => ids.has(n.id));
+    }
+    // ---------------------------------------------------------------- selection frame
+    /** Selection frame: single node → its rotated local box; multi → union AABB. */
+    selectionFrame() {
+        const selected = this.selectedNodes();
+        if (selected.length === 0)
+            return null;
+        if (selected.length === 1) {
+            const box = getBBox(selected[0]);
+            return { box, rotation: selected[0].rotation ?? 0, center: bboxCenter(box) };
+        }
+        const box = unionBBox(selected.map(getAABB));
+        return { box, rotation: 0, center: bboxCenter(box) };
+    }
+    /** Screen-space positions of the 8 resize handles + rotation handle. */
+    framePoints(frame) {
+        const pad = 4 / this.viewport.scale;
+        const b = {
+            x: frame.box.x - pad,
+            y: frame.box.y - pad,
+            w: frame.box.w + pad * 2,
+            h: frame.box.h + pad * 2,
+        };
+        const local = (hx, hy) => ({ x: b.x + b.w * hx, y: b.y + b.h * hy });
+        const toScreen = (p) => this.worldToScreen(rotatePoint(p, frame.center, frame.rotation));
+        const handles = HANDLES.map((h) => toScreen(local(h.hx, h.hy)));
+        const rotate = toScreen({ x: b.x + b.w / 2, y: b.y - ROTATE_OFFSET / this.viewport.scale });
+        const corners = [local(0, 0), local(1, 0), local(1, 1), local(0, 1)].map(toScreen);
+        return { handles, rotate, corners };
+    }
+    renderOverlay(ctx) {
+        const frame = this.selectionFrame();
+        if (frame) {
+            const { handles, rotate, corners } = this.framePoints(frame);
+            ctx.save();
+            ctx.strokeStyle = SELECTION_COLOR;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            for (let i = 1; i < 4; i++)
+                ctx.lineTo(corners[i].x, corners[i].y);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            if (this.tool === 'select') {
+                for (const h of handles) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.rect(h.x - 4, h.y - 4, 8, 8);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+                // rotation handle
+                const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+                ctx.beginPath();
+                ctx.moveTo(topMid.x, topMid.y);
+                ctx.lineTo(rotate.x, rotate.y);
+                ctx.stroke();
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(rotate.x, rotate.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+        if (this.mode.kind === 'marquee') {
+            const a = this.worldToScreen(this.mode.start);
+            const b = this.worldToScreen(this.mode.current);
+            const x = Math.min(a.x, b.x);
+            const y = Math.min(a.y, b.y);
+            const w = Math.abs(b.x - a.x);
+            const h = Math.abs(b.y - a.y);
+            ctx.save();
+            ctx.fillStyle = 'rgba(68, 103, 255, 0.08)';
+            ctx.strokeStyle = SELECTION_COLOR;
+            ctx.lineWidth = 1;
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+            ctx.restore();
+        }
+    }
+    // ---------------------------------------------------------------- interaction
+    bindEvents() {
+        const c = this.canvas;
+        const onDown = (e) => this.onPointerDown(e);
+        const onMove = (e) => this.onPointerMove(e);
+        const onUp = (e) => this.onPointerUp(e);
+        const onDbl = (e) => this.onDoubleClick(e);
+        const onWheel = (e) => this.onWheel(e);
+        const onKeyDown = (e) => this.onKeyDown(e);
+        const onKeyUp = (e) => this.onKeyUp(e);
+        const onDragOver = (e) => e.preventDefault();
+        const onDrop = (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer?.files?.[0];
+            if (file && file.type.startsWith('image/'))
+                void this.addImageFromFile(file);
+        };
+        c.addEventListener('pointerdown', onDown);
+        c.addEventListener('pointermove', onMove);
+        c.addEventListener('pointerup', onUp);
+        c.addEventListener('pointercancel', onUp);
+        c.addEventListener('dblclick', onDbl);
+        c.addEventListener('wheel', onWheel, { passive: false });
+        c.addEventListener('dragover', onDragOver);
+        c.addEventListener('drop', onDrop);
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        this.detachFns.push(() => {
+            c.removeEventListener('pointerdown', onDown);
+            c.removeEventListener('pointermove', onMove);
+            c.removeEventListener('pointerup', onUp);
+            c.removeEventListener('pointercancel', onUp);
+            c.removeEventListener('dblclick', onDbl);
+            c.removeEventListener('wheel', onWheel);
+            c.removeEventListener('dragover', onDragOver);
+            c.removeEventListener('drop', onDrop);
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+        });
+        this.updateCursor();
+    }
+    hitTolerance() {
+        return 4 / this.viewport.scale;
+    }
+    /** Mark the spatial index stale — rebuilt lazily on the next query. */
+    invalidateIndex() {
+        this.spatialDirty = true;
+    }
+    /** Rebuild the index from current node AABBs if it's stale. */
+    ensureIndex() {
+        if (this.spatialDirty || !this.spatialIndex) {
+            this.idToIndex = new Map(this.nodes.map((n, i) => [n.id, i]));
+            this.spatialIndex = Quadtree.build(this.nodes.map((n) => ({ id: n.id, box: getAABB(n) })));
+            this.spatialDirty = false;
+        }
+        return this.spatialIndex;
+    }
+    /**
+     * Broad-phase: ids whose AABB is near a point. For small scenes the index
+     * overhead isn't worth it, so we only consult it past a threshold and fall
+     * back to the full list otherwise. Either way the caller does the precise
+     * (transform-aware) hitTestNode on the returned candidates.
+     */
+    candidatesAtPoint(world) {
+        if (this.nodes.length < 64)
+            return null; // full scan is fine
+        return this.ensureIndex().queryPoint(world.x, world.y, this.hitTolerance());
+    }
+    hitTopmost(world) {
+        const candidates = this.candidatesAtPoint(world);
+        if (candidates) {
+            // Walk only candidates, topmost-first by z-order — no full-array scan.
+            const idxs = [];
+            for (const id of candidates) {
+                const i = this.idToIndex.get(id);
+                if (i !== undefined && !this.nodes[i].locked)
+                    idxs.push(i);
+            }
+            idxs.sort((a, b) => b - a);
+            for (const i of idxs) {
+                if (hitTestNode(this.nodes[i], world, this.hitTolerance()))
+                    return this.nodes[i];
+            }
+            return null;
+        }
+        for (let i = this.nodes.length - 1; i >= 0; i--) {
+            const node = this.nodes[i];
+            if (node.locked)
+                continue;
+            if (hitTestNode(node, world, this.hitTolerance()))
+                return node;
+        }
+        return null;
+    }
+    /** Which handle (if any) is under a screen point. */
+    handleAt(screen) {
+        if (this.tool !== 'select')
+            return null;
+        const frame = this.selectionFrame();
+        if (!frame)
+            return null;
+        const { handles, rotate } = this.framePoints(frame);
+        if (Math.hypot(screen.x - rotate.x, screen.y - rotate.y) <= 8)
+            return { kind: 'rotate' };
+        for (let i = 0; i < handles.length; i++) {
+            if (Math.abs(screen.x - handles[i].x) <= 6 && Math.abs(screen.y - handles[i].y) <= 6) {
+                return { kind: 'resize', index: i };
+            }
+        }
+        return null;
+    }
+    cloneSelection() {
+        const map = new Map();
+        for (const n of this.selectedNodes())
+            map.set(n.id, deepClone(n));
+        return map;
+    }
+    onPointerDown(e) {
+        if (this.replaying)
+            return;
+        if (e.button !== 0 && e.button !== 1)
+            return;
+        this.finishTextEdit();
+        this.canvas.setPointerCapture(e.pointerId);
+        const screen = this.pointerPos(e);
+        const world = this.screenToWorld(screen);
+        // pan: middle button / space / pan tool
+        if (e.button === 1 || this.spaceDown || this.tool === 'pan') {
+            this.mode = { kind: 'pan', lastScreen: screen };
+            this.canvas.style.cursor = 'grabbing';
+            return;
+        }
+        switch (this.tool) {
+            case 'select': {
+                const handle = this.handleAt(screen);
+                if (handle) {
+                    const frame = this.selectionFrame();
+                    if (!frame)
+                        return;
+                    if (handle.kind === 'rotate') {
+                        this.mode = {
+                            kind: 'rotate',
+                            center: frame.center,
+                            startAngle: Math.atan2(world.y - frame.center.y, world.x - frame.center.x),
+                            originals: this.cloneSelection(),
+                        };
+                    }
+                    else {
+                        this.mode = {
+                            kind: 'resize',
+                            handle: handle.index,
+                            from: frame.box,
+                            rotation: frame.rotation,
+                            center: frame.center,
+                            originals: this.cloneSelection(),
+                        };
+                    }
+                    return;
+                }
+                const hit = this.hitTopmost(world);
+                if (hit) {
+                    if (e.shiftKey) {
+                        if (this.selection.has(hit.id))
+                            this.selection.delete(hit.id);
+                        else
+                            this.selection.add(hit.id);
+                        this.emitSelection();
+                        this.requestRender();
+                        this.mode = { kind: 'none' };
+                        return;
+                    }
+                    if (!this.selection.has(hit.id)) {
+                        this.selection = new Set([hit.id]);
+                        this.emitSelection();
+                    }
+                    this.mode = { kind: 'move', last: world, moved: false };
+                }
+                else {
+                    const base = e.shiftKey ? [...this.selection] : [];
+                    if (!e.shiftKey && this.selection.size > 0) {
+                        this.selection.clear();
+                        this.emitSelection();
+                    }
+                    this.mode = { kind: 'marquee', start: world, current: world, base };
+                }
+                this.requestRender();
+                break;
+            }
+            case 'pen': {
+                const node = {
+                    id: genId(),
+                    type: 'path',
+                    points: [world],
+                    style: { ...this.style, fill: 'transparent' },
+                };
+                this.nodes.push(node);
+                this.mode = { kind: 'draw', node, start: world };
+                this.requestRender();
+                break;
+            }
+            case 'rect':
+            case 'ellipse':
+            case 'diamond':
+            case 'triangle': {
+                const node = {
+                    id: genId(),
+                    type: this.tool,
+                    x: world.x,
+                    y: world.y,
+                    w: 0,
+                    h: 0,
+                    style: { ...this.style },
+                };
+                this.nodes.push(node);
+                this.mode = { kind: 'draw', node, start: world };
+                break;
+            }
+            case 'line':
+            case 'arrow': {
+                const node = {
+                    id: genId(),
+                    type: 'line',
+                    x1: world.x,
+                    y1: world.y,
+                    x2: world.x,
+                    y2: world.y,
+                    arrow: this.tool === 'arrow',
+                    style: { ...this.style },
+                };
+                this.nodes.push(node);
+                this.mode = { kind: 'draw', node, start: world };
+                break;
+            }
+            case 'text': {
+                const node = {
+                    id: genId(),
+                    type: 'text',
+                    x: world.x,
+                    y: world.y,
+                    text: '',
+                    fontSize: this.fontSize,
+                    fontFamily: this.fontFamily,
+                    w: this.fontSize,
+                    h: this.fontSize * LINE_HEIGHT,
+                    style: { ...this.style, fill: 'transparent' },
+                };
+                this.nodes.push(node);
+                this.mode = { kind: 'none' };
+                this.startTextEdit(node);
+                break;
+            }
+            case 'eraser': {
+                this.mode = { kind: 'erase', erased: false };
+                this.eraseAt(world);
+                break;
+            }
+        }
+    }
+    eraseAt(world) {
+        const hit = this.hitTopmost(world);
+        if (hit && this.mode.kind === 'erase') {
+            this.nodes = this.nodes.filter((n) => n.id !== hit.id);
+            this.selection.delete(hit.id);
+            this.mode.erased = true;
+            this.requestRender();
+        }
+    }
+    onPointerMove(e) {
+        if (this.replaying)
+            return;
+        const screen = this.pointerPos(e);
+        const world = this.screenToWorld(screen);
+        const mode = this.mode;
+        switch (mode.kind) {
+            case 'none': {
+                if (this.tool === 'select') {
+                    const handle = this.handleAt(screen);
+                    if (handle?.kind === 'rotate')
+                        this.canvas.style.cursor = 'grab';
+                    else if (handle?.kind === 'resize')
+                        this.canvas.style.cursor = HANDLES[handle.index].cursor;
+                    else
+                        this.canvas.style.cursor = this.hitTopmost(world) ? 'move' : 'default';
+                }
+                return;
+            }
+            case 'pan': {
+                this.viewport.x += screen.x - mode.lastScreen.x;
+                this.viewport.y += screen.y - mode.lastScreen.y;
+                mode.lastScreen = screen;
+                this.emitter.emit('viewport', this.getViewport());
+                this.requestRender();
+                return;
+            }
+            case 'draw': {
+                const node = mode.node;
+                if (node.type === 'path') {
+                    const last = node.points[node.points.length - 1];
+                    const distScreen = Math.hypot(world.x - last.x, world.y - last.y) * this.viewport.scale;
+                    if (distScreen >= 1.5)
+                        node.points.push(world);
+                }
+                else if (node.type === 'rect' ||
+                    node.type === 'ellipse' ||
+                    node.type === 'diamond' ||
+                    node.type === 'triangle') {
+                    let x0 = mode.start.x, y0 = mode.start.y, x1 = world.x, y1 = world.y;
+                    if (e.shiftKey) {
+                        const side = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+                        x1 = x0 + Math.sign(x1 - x0 || 1) * side;
+                        y1 = y0 + Math.sign(y1 - y0 || 1) * side;
+                    }
+                    node.x = Math.min(x0, x1);
+                    node.y = Math.min(y0, y1);
+                    node.w = Math.abs(x1 - x0);
+                    node.h = Math.abs(y1 - y0);
+                }
+                else if (node.type === 'line') {
+                    node.x2 = world.x;
+                    node.y2 = world.y;
+                    if (e.shiftKey) {
+                        const dx = node.x2 - node.x1;
+                        const dy = node.y2 - node.y1;
+                        const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+                        const len = Math.hypot(dx, dy);
+                        node.x2 = node.x1 + Math.cos(angle) * len;
+                        node.y2 = node.y1 + Math.sin(angle) * len;
+                    }
+                }
+                this.requestRender();
+                return;
+            }
+            case 'move': {
+                const dx = world.x - mode.last.x;
+                const dy = world.y - mode.last.y;
+                if (dx !== 0 || dy !== 0) {
+                    for (const n of this.selectedNodes())
+                        translateNode(n, dx, dy);
+                    mode.last = world;
+                    mode.moved = true;
+                    this.invalidateIndex();
+                    this.requestRender();
+                }
+                return;
+            }
+            case 'resize': {
+                const h = HANDLES[mode.handle];
+                const from = mode.from;
+                // map the pointer into the frame's local (unrotated) space
+                const local = mode.rotation === 0 ? world : rotatePoint(world, mode.center, -mode.rotation);
+                let { x, y, w, h: hh } = from;
+                if (h.hx === 0) {
+                    const right = from.x + from.w;
+                    x = Math.min(local.x, right - 1);
+                    w = right - x;
+                }
+                else if (h.hx === 1) {
+                    w = Math.max(1, local.x - from.x);
+                }
+                if (h.hy === 0) {
+                    const bottom = from.y + from.h;
+                    y = Math.min(local.y, bottom - 1);
+                    hh = bottom - y;
+                }
+                else if (h.hy === 1) {
+                    hh = Math.max(1, local.y - from.y);
+                }
+                if (e.shiftKey && h.hx !== 0.5 && h.hy !== 0.5 && from.w > 0 && from.h > 0) {
+                    const ratio = from.w / from.h;
+                    if (w / Math.max(hh, 1) > ratio)
+                        w = hh * ratio;
+                    else
+                        hh = w / ratio;
+                    if (h.hx === 0)
+                        x = from.x + from.w - w;
+                    if (h.hy === 0)
+                        y = from.y + from.h - hh;
+                }
+                const to = { x, y, w, h: hh };
+                for (const n of this.selectedNodes()) {
+                    const original = mode.originals.get(n.id);
+                    if (!original)
+                        continue;
+                    const fresh = deepClone(original);
+                    scaleNodeInto(fresh, from, to);
+                    Object.assign(n, fresh);
+                }
+                this.requestRender();
+                return;
+            }
+            case 'rotate': {
+                const angle = Math.atan2(world.y - mode.center.y, world.x - mode.center.x);
+                const delta = angle - mode.startAngle;
+                for (const n of this.selectedNodes()) {
+                    const original = mode.originals.get(n.id);
+                    if (!original)
+                        continue;
+                    const fresh = deepClone(original);
+                    let rot = (original.rotation ?? 0) + delta;
+                    if (e.shiftKey)
+                        rot = Math.round(rot / (Math.PI / 12)) * (Math.PI / 12);
+                    const applied = rot - (original.rotation ?? 0);
+                    fresh.rotation = rot;
+                    // orbit the node's center around the shared pivot
+                    const c0 = bboxCenter(getBBox(original));
+                    const c1 = rotatePoint(c0, mode.center, applied);
+                    translateNode(fresh, c1.x - c0.x, c1.y - c0.y);
+                    Object.assign(n, fresh);
+                }
+                this.requestRender();
+                return;
+            }
+            case 'marquee': {
+                mode.current = world;
+                const rect = {
+                    x: Math.min(mode.start.x, world.x),
+                    y: Math.min(mode.start.y, world.y),
+                    w: Math.abs(world.x - mode.start.x),
+                    h: Math.abs(world.y - mode.start.y),
+                };
+                const candidates = this.nodes.length >= 64 ? this.ensureIndex().queryBox(rect) : null;
+                const inside = this.nodes
+                    .filter((n) => !n.locked &&
+                    (!candidates || candidates.has(n.id)) &&
+                    bboxIntersects(getAABB(n), rect))
+                    .map((n) => n.id);
+                this.selection = new Set([...mode.base, ...inside]);
+                this.emitSelection();
+                this.requestRender();
+                return;
+            }
+            case 'erase':
+                this.eraseAt(world);
+                return;
+        }
+    }
+    onPointerUp(e) {
+        if (this.canvas.hasPointerCapture(e.pointerId)) {
+            this.canvas.releasePointerCapture(e.pointerId);
+        }
+        const mode = this.mode;
+        this.mode = { kind: 'none' };
+        switch (mode.kind) {
+            case 'draw': {
+                const node = mode.node;
+                const box = getBBox(node);
+                const tooSmall = node.type !== 'path' && box.w < 2 && box.h < 2;
+                if (tooSmall) {
+                    this.nodes = this.nodes.filter((n) => n.id !== node.id);
+                    this.requestRender();
+                }
+                else {
+                    this.commit();
+                }
+                break;
+            }
+            case 'move':
+                if (mode.moved)
+                    this.commit();
+                break;
+            case 'resize':
+            case 'rotate':
+                this.commit();
+                break;
+            case 'erase':
+                if (mode.erased)
+                    this.commit();
+                break;
+            case 'pan':
+                this.updateCursor();
+                break;
+            case 'marquee':
+                this.requestRender();
+                break;
+            case 'none':
+                break;
+        }
+    }
+    onDoubleClick(e) {
+        if (this.replaying || this.tool !== 'select')
+            return;
+        const rect = this.canvas.getBoundingClientRect();
+        const world = this.screenToWorld({ x: e.clientX - rect.x, y: e.clientY - rect.y });
+        const hit = this.hitTopmost(world);
+        if (hit && hit.type === 'text') {
+            this.selection = new Set([hit.id]);
+            this.emitSelection();
+            this.startTextEdit(hit);
+        }
+    }
+    onWheel(e) {
+        if (this.replaying)
+            return;
+        e.preventDefault();
+        this.finishTextEdit();
+        const screen = this.pointerPos(e);
+        if (e.ctrlKey || e.metaKey) {
+            this.setZoom(this.viewport.scale * Math.exp(-e.deltaY * 0.01), screen);
+        }
+        else {
+            this.setZoom(this.viewport.scale * Math.exp(-e.deltaY * 0.0015), screen);
+        }
+    }
+    isEditableTarget(e) {
+        const t = e.target;
+        if (!t)
+            return false;
+        return (t.tagName === 'INPUT' ||
+            t.tagName === 'TEXTAREA' ||
+            t.tagName === 'SELECT' ||
+            t.isContentEditable);
+    }
+    onKeyDown(e) {
+        if (this.replaying || this.isEditableTarget(e))
+            return;
+        const mod = e.ctrlKey || e.metaKey;
+        if (e.code === 'Space') {
+            this.spaceDown = true;
+            if (this.mode.kind === 'none')
+                this.canvas.style.cursor = 'grab';
+            e.preventDefault();
+            return;
+        }
+        if (mod) {
+            const key = e.key.toLowerCase();
+            switch (key) {
+                case 'z':
+                    e.preventDefault();
+                    if (e.shiftKey)
+                        this.redo();
+                    else
+                        this.undo();
+                    return;
+                case 'y':
+                    e.preventDefault();
+                    this.redo();
+                    return;
+                case 'a':
+                    e.preventDefault();
+                    this.selectAll();
+                    return;
+                case 'g':
+                    e.preventDefault();
+                    if (e.shiftKey)
+                        this.ungroup();
+                    else
+                        this.group();
+                    return;
+                case 'd':
+                    e.preventDefault();
+                    this.duplicateSelection();
+                    return;
+                case 'c':
+                    this.copySelection();
+                    return;
+                case 'x':
+                    this.cutSelection();
+                    return;
+                case 'v':
+                    this.paste();
+                    return;
+            }
+            return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            this.deleteSelection();
+            return;
+        }
+        if (e.key === 'Escape') {
+            this.clearSelection();
+            return;
+        }
+        // arrow-key nudge
+        if (e.key.startsWith('Arrow') && this.selection.size > 0) {
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 1;
+            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+            const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+            for (const n of this.selectedNodes())
+                translateNode(n, dx, dy);
+            this.commit();
+            this.requestRender();
+            return;
+        }
+        // tool shortcuts
+        const map = {
+            v: 'select',
+            p: 'pen',
+            r: 'rect',
+            o: 'ellipse',
+            d: 'diamond',
+            l: 'line',
+            a: 'arrow',
+            t: 'text',
+            e: 'eraser',
+            h: 'pan',
+        };
+        const tool = map[e.key.toLowerCase()];
+        if (tool)
+            this.setTool(tool);
+    }
+    onKeyUp(e) {
+        if (e.code === 'Space') {
+            this.spaceDown = false;
+            if (this.mode.kind === 'none')
+                this.updateCursor();
+        }
+    }
+    updateCursor() {
+        const map = {
+            select: 'default',
+            pen: 'crosshair',
+            rect: 'crosshair',
+            ellipse: 'crosshair',
+            diamond: 'crosshair',
+            triangle: 'crosshair',
+            line: 'crosshair',
+            arrow: 'crosshair',
+            text: 'text',
+            eraser: 'crosshair',
+            pan: 'grab',
+        };
+        this.canvas.style.cursor = map[this.tool];
+    }
+}
+//# sourceMappingURL=dohwa.js.map
+
+// ---- dist/cache.js
+/**
+ * Per-object bitmap caching, à la Fabric's objectCaching.
+ *
+ * Rendering a complex path or a deep group every frame is wasteful when the
+ * node hasn't changed. We render it once to an offscreen canvas keyed by a
+ * cheap content hash, then blit that bitmap with drawImage on subsequent
+ * frames. When the node's content changes, the hash changes and we re-render.
+ *
+ * The cache-key logic is a pure function (testable without a DOM); the bitmap
+ * store is a thin Map that only runs in the browser.
+ */
+/** Nodes cheap to draw directly aren't worth caching. */
+function shouldCache(node) {
+    switch (node.type) {
+        case 'path':
+            return node.points.length > 24; // long freehand strokes
+        case 'group':
+            return countLeaves(node) > 6; // non-trivial groups
+        default:
+            return false;
+    }
+}
+function countLeaves(node) {
+    if (node.type !== 'group')
+        return 1;
+    return node.children.reduce((sum, c) => sum + countLeaves(c), 0);
+}
+/**
+ * A content hash that changes iff the node's *appearance* changes.
+ * Deliberately excludes the node's transform and world position — those are
+ * applied when blitting, so a moved/rotated node reuses the same bitmap.
+ */
+function cacheKey(node) {
+    const s = node.style;
+    const base = `${s.stroke}|${s.fill}|${s.strokeWidth}|${s.opacity}`;
+    switch (node.type) {
+        case 'path': {
+            // sample a few points + count; full point list would be costly and
+            // is unnecessary — any edit changes count or a sampled coordinate.
+            const p = node.points;
+            const n = p.length;
+            const sample = [0, n >> 2, n >> 1, (3 * n) >> 2, n - 1]
+                .map((i) => p[i])
+                .filter(Boolean)
+                .map((pt) => `${Math.round(pt.x)},${Math.round(pt.y)}`)
+                .join(';');
+            return `path:${n}:${sample}:${base}`;
+        }
+        case 'group':
+            return `group:${node.children.map(cacheKey).join('/')}:${base}`;
+        default:
+            return `${node.type}:${base}`;
+    }
+}
+class ObjectCache {
+    constructor() {
+        this.entries = new Map();
+        this.hits = 0;
+        this.misses = 0;
+    }
+    /**
+     * Draw `node` into `ctx`, using a cached bitmap when possible.
+     * `ctx` is already in world space with the node's transform NOT yet applied;
+     * the node's own transform is applied inside renderNode for the miss path,
+     * and reproduced here for the hit path.
+     * Returns true if it handled drawing, false if the caller should renderNode directly.
+     */
+    draw(ctx, node, images, deviceScale) {
+        if (!shouldCache(node))
+            return false;
+        const key = cacheKey(node);
+        let entry = this.entries.get(node.id);
+        if (!entry || entry.key !== key || entry.scale !== deviceScale) {
+            const fresh = this.render(node, images, deviceScale);
+            if (!fresh)
+                return false;
+            entry = fresh;
+            this.entries.set(node.id, entry);
+            this.misses++;
+        }
+        else {
+            this.hits++;
+        }
+        // Blit the cached bitmap at its local origin. The caller is responsible
+        // for having applied the node's transform to `ctx` beforehand (mirroring
+        // how renderNode applies it), so the bitmap lands in the right place.
+        ctx.drawImage(entry.canvas, entry.originX, entry.originY, entry.w, entry.h);
+        return true;
+    }
+    render(node, images, deviceScale) {
+        if (typeof document === 'undefined')
+            return null;
+        const box = getAABB(node);
+        const pad = node.style.strokeWidth + 2;
+        const w = Math.ceil((box.w + pad * 2) * deviceScale);
+        const h = Math.ceil((box.h + pad * 2) * deviceScale);
+        if (w <= 0 || h <= 0 || w > 4096 || h > 4096)
+            return null; // too big to cache
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const octx = canvas.getContext('2d');
+        if (!octx)
+            return null;
+        octx.scale(deviceScale, deviceScale);
+        octx.translate(-(box.x - pad), -(box.y - pad));
+        renderNode(octx, node, images);
+        return {
+            key: cacheKey(node),
+            canvas,
+            scale: deviceScale,
+            originX: box.x - pad,
+            originY: box.y - pad,
+            w: box.w + pad * 2,
+            h: box.h + pad * 2,
+        };
+    }
+    invalidate(id) {
+        this.entries.delete(id);
+    }
+    clear() {
+        this.entries.clear();
+    }
+    stats() {
+        return { hits: this.hits, misses: this.misses, size: this.entries.size };
+    }
+}
+//# sourceMappingURL=cache.js.map
+
+// ---- dist/index.js
+// ---------------------------------------------------------------- engine
+
+// ---------------------------------------------------------------- pure geometry (DOM-free)
+
+// ---------------------------------------------------------------- affine matrix (DOM-free)
+
+// ---------------------------------------------------------------- spatial index (DOM-free)
+
+// ---------------------------------------------------------------- object cache (opt-in)
+
+// ---------------------------------------------------------------- rendering
+
+// ---------------------------------------------------------------- serialization
+
+// ---------------------------------------------------------------- primitives
+
+// ---------------------------------------------------------------- types
+
+//# sourceMappingURL=index.js.map
+
+// ---- dist/tools.js
+const ICON_ATTRS = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+};
+const TOOL_METAS = [
+    {
+        tool: 'select',
+        key: 'select',
+        label: 'Select',
+        shortcut: 'v',
+        group: 'draw',
+        creates: false,
+        icon: ['M5 3l14 8-6.5 1.5L9 19z'],
+    },
+    {
+        tool: 'pen',
+        key: 'pen',
+        label: 'Pen',
+        shortcut: 'p',
+        group: 'draw',
+        creates: true,
+        icon: ['M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z'],
+    },
+    {
+        tool: 'eraser',
+        key: 'eraser',
+        label: 'Eraser',
+        shortcut: 'e',
+        group: 'draw',
+        creates: false,
+        icon: [
+            'M20 20H8.5l-5-5a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l5.6 5.6a2 2 0 0 1 0 2.8L13 19.5',
+            'M8 9l7 7',
+        ],
+    },
+    {
+        tool: 'text',
+        key: 'text',
+        label: 'Text',
+        shortcut: 't',
+        group: 'draw',
+        creates: true,
+        icon: ['M5 6V4h14v2M12 4v16m-3 0h6'],
+    },
+    {
+        tool: 'rect',
+        key: 'rect',
+        label: 'Rectangle',
+        shortcut: 'r',
+        group: 'shape',
+        creates: true,
+        icon: ['M4 5h16v14H4z'],
+    },
+    {
+        tool: 'ellipse',
+        key: 'ellipse',
+        label: 'Ellipse',
+        shortcut: 'o',
+        group: 'shape',
+        creates: true,
+        icon: ['M12 5a8.5 7 0 1 0 0 14 8.5 7 0 1 0 0-14z'],
+    },
+    {
+        tool: 'diamond',
+        key: 'diamond',
+        label: 'Diamond',
+        shortcut: 'd',
+        group: 'shape',
+        creates: true,
+        icon: ['M12 3l8 9-8 9-8-9z'],
+    },
+    {
+        tool: 'triangle',
+        key: 'triangle',
+        label: 'Triangle',
+        group: 'shape',
+        creates: true,
+        icon: ['M12 4l9 16H3z'],
+    },
+    {
+        tool: 'line',
+        key: 'line',
+        label: 'Line',
+        shortcut: 'l',
+        group: 'shape',
+        creates: true,
+        icon: ['M5 19L19 5'],
+    },
+    {
+        tool: 'arrow',
+        key: 'arrow',
+        label: 'Arrow',
+        shortcut: 'a',
+        group: 'shape',
+        creates: true,
+        icon: ['M5 19L19 5M19 5h-8M19 5v8'],
+    },
+    {
+        tool: 'pan',
+        key: 'pan',
+        label: 'Pan',
+        shortcut: 'h',
+        group: 'view',
+        creates: false,
+        icon: [
+            'M18 11V6.5a1.5 1.5 0 0 0-3 0V11m0-1.5v-3a1.5 1.5 0 0 0-3 0V11m0-1V8a1.5 1.5 0 0 0-3 0v5.5L7.5 12A1.6 1.6 0 0 0 5 14l4 6a4 4 0 0 0 3.4 2H15a4 4 0 0 0 4-4v-7a1.5 1.5 0 0 0-1-1.5z',
+        ],
+    },
+];
+const BY_TOOL = new Map(TOOL_METAS.map((m) => [m.tool, m]));
+function getToolMeta(tool) {
+    return BY_TOOL.get(tool);
+}
+function getToolsByGroup(group) {
+    return TOOL_METAS.filter((m) => m.group === group);
+}
+/** Build a `<path d="...">` string set — handy for innerHTML-based UIs. */
+function toolIconSVG(tool, size = 20) {
+    const meta = BY_TOOL.get(tool);
+    if (!meta)
+        return '';
+    const paths = meta.icon.map((d) => `<path d="${d}"/>`).join('');
+    return (`<svg width="${size}" height="${size}" viewBox="${ICON_ATTRS.viewBox}" fill="none" ` +
+        `stroke="currentColor" stroke-width="${ICON_ATTRS.strokeWidth}" ` +
+        `stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`);
+}
+const ACTION_METAS = [
+    { key: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', icon: ['M9 14L4 9l5-5', 'M4 9h10a6 6 0 0 1 0 12h-3'] },
+    { key: 'redo', label: 'Redo', shortcut: 'Ctrl+Shift+Z', icon: ['M15 14l5-5-5-5', 'M20 9H10a6 6 0 0 0 0 12h3'] },
+    { key: 'group', label: 'Group', shortcut: 'Ctrl+G', needsMultiSelection: true },
+    { key: 'ungroup', label: 'Ungroup', shortcut: 'Ctrl+Shift+G', needsSelection: true },
+    { key: 'bringToFront', label: 'Bring to front', needsSelection: true },
+    { key: 'sendToBack', label: 'Send to back', needsSelection: true },
+    { key: 'flipH', label: 'Flip horizontal', needsSelection: true },
+    { key: 'flipV', label: 'Flip vertical', needsSelection: true },
+    { key: 'lock', label: 'Lock', needsSelection: true, icon: ['M5 11h14v9H5z', 'M8 11V7a4 4 0 0 1 8 0v4'] },
+    { key: 'duplicate', label: 'Duplicate', shortcut: 'Ctrl+D', needsSelection: true },
+    { key: 'copy', label: 'Copy', shortcut: 'Ctrl+C', needsSelection: true },
+    { key: 'cut', label: 'Cut', shortcut: 'Ctrl+X', needsSelection: true },
+    { key: 'paste', label: 'Paste', shortcut: 'Ctrl+V' },
+    {
+        key: 'delete',
+        label: 'Delete',
+        shortcut: 'Del',
+        needsSelection: true,
+        icon: ['M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
+    },
+    { key: 'selectAll', label: 'Select all', shortcut: 'Ctrl+A' },
+    { key: 'replay', label: 'Replay' },
+    { key: 'zoomIn', label: 'Zoom in' },
+    { key: 'zoomOut', label: 'Zoom out' },
+    { key: 'zoomToFit', label: 'Zoom to fit' },
+    { key: 'clear', label: 'Clear' },
+];
+const BY_ACTION = new Map(ACTION_METAS.map((a) => [a.key, a]));
+function getActionMeta(key) {
+    return BY_ACTION.get(key);
+}
+//# sourceMappingURL=tools.js.map
+
+// ---- dist/store.js
+class DohwaStore {
+    constructor(app) {
+        this.listeners = new Set();
+        this.offs = [];
+        /** For React: useSyncExternalStore(store.subscribe, store.getSnapshot) */
+        this.subscribe = (fn) => {
+            this.listeners.add(fn);
+            return () => this.listeners.delete(fn);
+        };
+        this.getSnapshot = () => this.state;
+        /** Whether an action is currently available (for disabling buttons). */
+        this.canRun = (key) => {
+            const meta = ACTION_METAS.find((a) => a.key === key);
+            if (!meta)
+                return false;
+            const s = this.state;
+            if (s.isReplaying)
+                return false;
+            if (meta.needsMultiSelection)
+                return s.selectionCount >= 2;
+            if (meta.needsSelection)
+                return s.selectionCount >= 1;
+            if (key === 'undo')
+                return s.canUndo;
+            if (key === 'redo')
+                return s.canRedo;
+            if (key === 'replay')
+                return s.canReplay;
+            return true;
+        };
+        /** Run any toolbar action by key — one switch instead of 20 wired handlers. */
+        this.run = (key) => {
+            const app = this.app;
+            switch (key) {
+                case 'undo':
+                    app.undo();
+                    break;
+                case 'redo':
+                    app.redo();
+                    break;
+                case 'group':
+                    app.group();
+                    break;
+                case 'ungroup':
+                    app.ungroup();
+                    break;
+                case 'bringToFront':
+                    app.bringToFront();
+                    break;
+                case 'sendToBack':
+                    app.sendToBack();
+                    break;
+                case 'flipH':
+                    app.flipSelection('h');
+                    break;
+                case 'flipV':
+                    app.flipSelection('v');
+                    break;
+                case 'lock':
+                    app.lockSelection();
+                    break;
+                case 'duplicate':
+                    app.duplicateSelection();
+                    break;
+                case 'copy':
+                    app.copySelection();
+                    break;
+                case 'cut':
+                    app.cutSelection();
+                    break;
+                case 'paste':
+                    app.paste();
+                    break;
+                case 'delete':
+                    app.deleteSelection();
+                    break;
+                case 'selectAll':
+                    app.selectAll();
+                    break;
+                case 'replay':
+                    void app.replay();
+                    break;
+                case 'zoomIn':
+                    app.zoomIn();
+                    break;
+                case 'zoomOut':
+                    app.zoomOut();
+                    break;
+                case 'zoomToFit':
+                    app.zoomToFit();
+                    break;
+                case 'clear':
+                    app.clear();
+                    break;
+            }
+        };
+        this.app = app;
+        this.state = this.read();
+        const refresh = () => {
+            const next = this.read();
+            // shallow-compare so identical snapshots don't re-render
+            if (!shallowEqual(next, this.state)) {
+                this.state = next;
+                this.listeners.forEach((fn) => fn());
+            }
+        };
+        for (const event of [
+            'tool',
+            'selection',
+            'history',
+            'viewport',
+            'change',
+            'textedit',
+            'replay',
+        ]) {
+            this.offs.push(app.on(event, refresh));
+        }
+    }
+    destroy() {
+        this.offs.forEach((off) => off());
+        this.offs = [];
+        this.listeners.clear();
+    }
+    read() {
+        const app = this.app;
+        const ids = app.getSelectedIds();
+        const vp = app.getViewport();
+        const history = app.getHistoryState();
+        return {
+            tool: app.getTool(),
+            style: app.getStyle(),
+            selectedIds: ids,
+            selectionCount: ids.length,
+            canUndo: history.canUndo,
+            canRedo: history.canRedo,
+            viewport: vp,
+            zoomPercent: Math.round(vp.scale * 100),
+            editingTextId: app.getEditingTextId(),
+            isReplaying: app.isReplaying(),
+            hasLockedNodes: app.hasLockedNodes(),
+            canReplay: app.getTimeline().length >= 2,
+        };
+    }
+}
+function shallowEqual(a, b) {
+    return (a.tool === b.tool &&
+        a.selectionCount === b.selectionCount &&
+        a.selectedIds.join(',') === b.selectedIds.join(',') &&
+        a.canUndo === b.canUndo &&
+        a.canRedo === b.canRedo &&
+        a.zoomPercent === b.zoomPercent &&
+        a.viewport.x === b.viewport.x &&
+        a.viewport.y === b.viewport.y &&
+        a.editingTextId === b.editingTextId &&
+        a.isReplaying === b.isReplaying &&
+        a.hasLockedNodes === b.hasLockedNodes &&
+        a.canReplay === b.canReplay &&
+        a.style.stroke === b.style.stroke &&
+        a.style.fill === b.style.fill &&
+        a.style.strokeWidth === b.style.strokeWidth &&
+        a.style.opacity === b.style.opacity);
+}
+/** Convenience: create a store bound to an engine instance. */
+function createStore(app) {
+    return new DohwaStore(app);
+}
+//# sourceMappingURL=store.js.map
+
+// ---- dist/ui.js
+/**
+ * UI-building material — tool/action metadata and a headless store.
+ * Import from 'dohwa/ui'. Nothing here renders DOM; you build the toolbar.
+ */
+
+
+//# sourceMappingURL=ui.js.map
+
+// ---- dist/theme.js
+/** Ink on hanji paper — the dohwa house palette. */
+const HANJI_PALETTE = {
+    key: 'hanji',
+    label: 'Hanji',
+    strokes: [
+        { key: 'ink', label: 'Ink', value: '#221d18' },
+        { key: 'vermillion', label: 'Vermillion', value: '#c8431f' },
+        { key: 'indigo', label: 'Indigo', value: '#27496d' },
+        { key: 'pine', label: 'Pine', value: '#3e6b47' },
+        { key: 'ochre', label: 'Ochre', value: '#b07d2b' },
+    ],
+    fills: [
+        { key: 'none', label: 'None', value: 'transparent' },
+        { key: 'ink', label: 'Ink wash', value: 'rgba(34,29,24,0.12)' },
+        { key: 'vermillion', label: 'Vermillion wash', value: 'rgba(200,67,31,0.22)' },
+        { key: 'indigo', label: 'Indigo wash', value: 'rgba(39,73,109,0.20)' },
+        { key: 'ochre', label: 'Ochre wash', value: 'rgba(176,125,43,0.22)' },
+    ],
+    defaultStyle: { stroke: '#221d18', fill: 'transparent', strokeWidth: 3, opacity: 1 },
+};
+/** Neutral, high-contrast palette for whiteboard-style apps. */
+const SLATE_PALETTE = {
+    key: 'slate',
+    label: 'Slate',
+    strokes: [
+        { key: 'black', label: 'Black', value: '#0f172a' },
+        { key: 'red', label: 'Red', value: '#e11d48' },
+        { key: 'blue', label: 'Blue', value: '#2563eb' },
+        { key: 'green', label: 'Green', value: '#16a34a' },
+        { key: 'amber', label: 'Amber', value: '#d97706' },
+    ],
+    fills: [
+        { key: 'none', label: 'None', value: 'transparent' },
+        { key: 'gray', label: 'Gray', value: 'rgba(15,23,42,0.10)' },
+        { key: 'red', label: 'Red', value: 'rgba(225,29,72,0.16)' },
+        { key: 'blue', label: 'Blue', value: 'rgba(37,99,235,0.16)' },
+        { key: 'green', label: 'Green', value: 'rgba(22,163,74,0.16)' },
+    ],
+    defaultStyle: { stroke: '#0f172a', fill: 'transparent', strokeWidth: 2, opacity: 1 },
+};
+const PALETTES = [HANJI_PALETTE, SLATE_PALETTE];
+function getPalette(key) {
+    return PALETTES.find((p) => p.key === key);
+}
+/** Common stroke widths, for a width picker. */
+const STROKE_WIDTHS = [1, 2, 3, 5, 8, 12, 20];
+const HANJI_THEME = {
+    key: 'hanji',
+    label: 'Hanji',
+    vars: {
+        '--dohwa-paper': '#f3ead8',
+        '--dohwa-paper-deep': '#e9ddc4',
+        '--dohwa-ink': '#221d18',
+        '--dohwa-ink-soft': '#5c5246',
+        '--dohwa-line': '#d6c8a8',
+        '--dohwa-accent': '#c8431f',
+        '--dohwa-panel': '#fbf6ea',
+        '--dohwa-selection': '#4467ff',
+        '--dohwa-radius': '14px',
+        '--dohwa-shadow': '0 10px 30px rgba(60, 44, 20, 0.18), 0 2px 6px rgba(60, 44, 20, 0.10)',
+    },
+};
+const SLATE_THEME = {
+    key: 'slate',
+    label: 'Slate',
+    vars: {
+        '--dohwa-paper': '#ffffff',
+        '--dohwa-paper-deep': '#f1f5f9',
+        '--dohwa-ink': '#0f172a',
+        '--dohwa-ink-soft': '#64748b',
+        '--dohwa-line': '#e2e8f0',
+        '--dohwa-accent': '#2563eb',
+        '--dohwa-panel': '#ffffff',
+        '--dohwa-selection': '#2563eb',
+        '--dohwa-radius': '10px',
+        '--dohwa-shadow': '0 4px 16px rgba(15, 23, 42, 0.10)',
+    },
+};
+const THEMES = [HANJI_THEME, SLATE_THEME];
+/** Write a theme's custom properties onto an element (usually :root or your app shell). */
+function applyTheme(el, theme) {
+    for (const [name, value] of Object.entries(theme.vars)) {
+        el.style.setProperty(name, value);
+    }
+}
+//# sourceMappingURL=theme.js.map
+
+// ---- dist/presets.js
+/**
+ * Optional palettes and UI themes. Import from 'dohwa/presets'.
+ * The engine never depends on these — swap in your own design tokens freely.
+ */
+
+//# sourceMappingURL=presets.js.map
+
+// ---- dist/factory.js
+/**
+ * Pure node constructors — no DOM, no engine instance required.
+ * Build scenes on a server, in a test, or from an LLM's JSON output,
+ * then hand them to `app.loadJSON()`.
+ */
+let counter = 0;
+function createId(prefix = 'n') {
+    counter += 1;
+    return `${prefix}${Date.now().toString(36)}${counter.toString(36)}`;
+}
+function withStyle(style) {
+    return { ...DEFAULT_STYLE, ...style };
+}
+function rect(init) {
+    const { x, y, w, h, rx, style, transform, rotation, locked } = init;
+    return { id: createId(), type: 'rect', x, y, w, h, rx, style: withStyle(style), transform, rotation, locked };
+}
+function ellipse(init) {
+    const { x, y, w, h, style, transform, rotation, locked } = init;
+    return { id: createId(), type: 'ellipse', x, y, w, h, style: withStyle(style), transform, rotation, locked };
+}
+function diamond(init) {
+    const { x, y, w, h, style, transform, rotation, locked } = init;
+    return { id: createId(), type: 'diamond', x, y, w, h, style: withStyle(style), transform, rotation, locked };
+}
+function triangle(init) {
+    const { x, y, w, h, flipY, style, rotation, locked } = init;
+    return {
+        id: createId(), type: 'triangle', x, y, w, h, flipY,
+        style: withStyle(style), rotation, locked,
+    };
+}
+function line(init) {
+    const { x1, y1, x2, y2, arrow, style, rotation, locked } = init;
+    return {
+        id: createId(), type: 'line', x1, y1, x2, y2, arrow,
+        style: withStyle(style), rotation, locked,
+    };
+}
+function arrow(init) {
+    return line({ ...init, arrow: true });
+}
+function path(init) {
+    const { points, style, rotation, locked } = init;
+    return {
+        id: createId(), type: 'path', points: points.map((p) => ({ x: p.x, y: p.y })),
+        style: withStyle(style), rotation, locked,
+    };
+}
+/**
+ * Text w/h are measured by the engine on load; the estimates here keep
+ * server-built scenes usable for bbox math before they hit a browser.
+ */
+function text(init) {
+    const fontSize = init.fontSize ?? 28;
+    const fontFamily = init.fontFamily ?? 'sans-serif';
+    const lines = init.text.split('\n');
+    const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    return {
+        id: createId(),
+        type: 'text',
+        x: init.x,
+        y: init.y,
+        text: init.text,
+        fontSize,
+        fontFamily,
+        w: longest * fontSize * 0.6, // estimate — re-measured in the browser
+        h: lines.length * fontSize * 1.3,
+        style: withStyle({ fill: 'transparent', ...init.style }),
+        rotation: init.rotation,
+        locked: init.locked,
+    };
+}
+function image(init) {
+    const { x, y, w, h, src, flipX, flipY, style, rotation, locked } = init;
+    return {
+        id: createId(), type: 'image', x, y, w, h, src, flipX, flipY,
+        style: withStyle({ stroke: 'transparent', ...style }),
+        rotation, locked,
+    };
+}
+function group(children, init) {
+    return {
+        id: createId(), type: 'group', children,
+        style: withStyle(init?.style), rotation: init?.rotation, locked: init?.locked,
+    };
+}
+/** Wrap nodes into a valid scene object. */
+function scene(nodes) {
+    return { app: 'dohwa', version: 1, nodes };
+}
+const NODE_TYPES = new Set([
+    'path', 'rect', 'ellipse', 'diamond', 'triangle', 'line', 'text', 'image', 'group',
+]);
+function validateNode(node, at, errors) {
+    if (typeof node !== 'object' || node === null) {
+        errors.push(`${at}: not an object`);
+        return;
+    }
+    const n = node;
+    if (typeof n.id !== 'string' || n.id === '')
+        errors.push(`${at}: missing id`);
+    if (typeof n.type !== 'string' || !NODE_TYPES.has(n.type)) {
+        errors.push(`${at}: unknown type "${String(n.type)}"`);
+        return;
+    }
+    const style = n.style;
+    if (!style || typeof style.stroke !== 'string' || typeof style.strokeWidth !== 'number') {
+        errors.push(`${at}: invalid style`);
+    }
+    if (n.type === 'group') {
+        if (!Array.isArray(n.children)) {
+            errors.push(`${at}: group.children must be an array`);
+        }
+        else {
+            n.children.forEach((c, i) => validateNode(c, `${at}.children[${i}]`, errors));
+        }
+    }
+}
+/** Validate an untrusted scene (e.g. LLM output, user upload) before loading it. */
+function validateScene(input) {
+    const errors = [];
+    if (typeof input !== 'object' || input === null) {
+        return { valid: false, errors: ['scene: not an object'] };
+    }
+    const s = input;
+    if (s.app !== 'dohwa')
+        errors.push('scene.app must be "dohwa"');
+    if (s.version !== 1)
+        errors.push('scene.version must be 1');
+    if (!Array.isArray(s.nodes)) {
+        errors.push('scene.nodes must be an array');
+    }
+    else {
+        s.nodes.forEach((n, i) => validateNode(n, `nodes[${i}]`, errors));
+    }
+    return { valid: errors.length === 0, errors };
+}
+//# sourceMappingURL=factory.js.map
+
+// ---- dist/nodes.js
+/**
+ * Pure node factories + scene validation. Import from 'dohwa/nodes'.
+ * DOM-free: build and verify scenes on a server, in tests, or from LLM output.
+ */
+
+// Re-exported so server/AI scene builders can construct transforms without a
+// second import: `import { rect, compose } from 'dohwa/nodes'`.
+
+//# sourceMappingURL=nodes.js.map
+
+// ---- dist/global.js
+// Everything, flattened — for the IIFE/script-tag build (window.Dohwa.*)
+
+
+
+
+//# sourceMappingURL=global.js.map
+
+return { ACTION_METAS, BY_ACTION, BY_TOOL, DEFAULT_STYLE, Dohwa, DohwaStore, Emitter, HANDLES, HANJI_PALETTE, HANJI_THEME, History, ICON_ATTRS, IDENTITY, LINE_HEIGHT, MAX_DEPTH, MAX_ITEMS, NODE_TYPES, ObjectCache, PALETTES, Quadtree, ROTATE_OFFSET, SELECTION_COLOR, SLATE_PALETTE, SLATE_THEME, STROKE_WIDTHS, THEMES, TOOL_METAS, aabbOfPoints, applyStrokeFill, applyTheme, applyToPoint, arrow, arrowHead, bboxCenter, bboxCorners, bboxIntersects, cacheKey, compose, composeAll, countLeaves, counter, createId, createStore, decompose, deepClone, determinant, diamond, diamondPoints, distToSegment, ellipse, escapeXML, flipNode, fmt, genId, getAABB, getActionMeta, getBBox, getPalette, getToolMeta, getToolsByGroup, group, hasTransform, hitTestNode, idCounter, image, invert, isIdentity, line, lineSVG, measureCtx, measureText, multiply, nearPolygonEdge, nodeMatrix, nodeToSVG, path, pathD, pointInBBox, pointInPolygon, polygonSVG, rawBBox, rect, renderNode, renderScene, renderText, rotatePoint, rotation, rotationAttr, scaleNodeInto, scaling, scene, sceneToSVG, shallowEqual, shouldCache, skewing, styleAttrs, text, toCSS, toLocalPoint, toolIconSVG, tracePath, traceRoundedRect, transformBBox, translateNode, translation, triangle, trianglePoints, unionBBox, validateNode, validateScene, withStyle };
+})();
+</script>
+<script>
+(function(){
+  const { Dohwa, Quadtree, getAABB, hitTestNode } = window.Dohwa;
+  const stage = document.getElementById('stage');
+  const app = new Dohwa(stage, { tool:'select', background:'#f3ead8' });
+  window.app = app;
+
+  const $ = (id) => document.getElementById(id);
+  let lastNodes = [];
+
+  function gen() {
+    const n = +$('count').value;
+    const kind = $('kind').value;
+    const side = Math.ceil(Math.sqrt(n));
+    const gap = 46;
+    const nodes = [];
+    const palette = ['#221d18','#c8431f','#27496d','#3e6b47','#b07d2b'];
+    for (let i=0;i<n;i++){
+      const ox=(i%side)*gap, oy=Math.floor(i/side)*gap;
+      const stroke = palette[i%palette.length];
+      if (kind==='path'){
+        const pts=[]; for(let s=0;s<30;s++){const a=s/30*Math.PI*2; pts.push({x:ox+Math.cos(a)*16+Math.sin(s)*3, y:oy+Math.sin(a)*16});}
+        nodes.push({ id:'n'+i, type:'path', points:pts, style:{stroke, fill:'transparent', strokeWidth:2, opacity:1} });
+      } else {
+        nodes.push({ id:'n'+i, type:'rect', x:ox, y:oy, w:30, h:30, rotation:(i%7)*0.2,
+          style:{stroke, fill:i%3?'transparent':stroke+'33', strokeWidth:2, opacity:1} });
+      }
+    }
+    lastNodes = nodes;
+    app.loadJSON({ app:'dohwa', version:1, nodes });
+    app.zoomToFit(60);
+    $('s-nodes').textContent = n.toLocaleString();
+    measureRender();
+  }
+
+  function measureRender(){
+    const t0=performance.now();
+    // force a synchronous-ish redraw by nudging viewport imperceptibly
+    app.setZoom(app.getViewport().scale);
+    requestAnimationFrame(()=>{
+      const dt=performance.now()-t0;
+      $('s-render').textContent = dt.toFixed(1)+'ms';
+    });
+  }
+
+  // FPS meter
+  let frames=0, lastT=performance.now();
+  function loop(){
+    frames++; const now=performance.now();
+    if(now-lastT>=500){ $('s-fps').textContent=Math.round(frames*1000/(now-lastT)); frames=0; lastT=now; }
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // approximate visible count via the same cull logic
+  function updateVisible(){
+    const vp=app.getViewport();
+    const inv=1/vp.scale;
+    const view={x:-vp.x*inv, y:-vp.y*inv, w:stage.clientWidth*inv, h:stage.clientHeight*inv};
+    let vis=0;
+    for(const nd of lastNodes){ const b=getAABB(nd); if(b.x<view.x+view.w&&b.x+b.w>view.x&&b.y<view.y+view.h&&b.y+b.h>view.y) vis++; }
+    $('s-visible').textContent=vis.toLocaleString();
+  }
+  app.on('viewport', updateVisible);
+  app.on('change', updateVisible);
+
+  // hit-test benchmark: index vs brute
+  $('hittest').addEventListener('click', ()=>{
+    if(!lastNodes.length){ alert('먼저 생성하세요'); return; }
+    const items=lastNodes.map(n=>({id:n.id, box:getAABB(n)}));
+    const tree=Quadtree.build(items);
+    const idToIdx=new Map(lastNodes.map((n,i)=>[n.id,i]));
+    const box=items.reduce((a,it)=>({minx:Math.min(a.minx,it.box.x),miny:Math.min(a.miny,it.box.y),maxx:Math.max(a.maxx,it.box.x+it.box.w),maxy:Math.max(a.maxy,it.box.y+it.box.h)}),{minx:1e9,miny:1e9,maxx:-1e9,maxy:-1e9});
+    const rx=()=>box.minx+Math.random()*(box.maxx-box.minx);
+    const ry=()=>box.miny+Math.random()*(box.maxy-box.miny);
+    const N=2000;
+
+    let t=performance.now();
+    for(let k=0;k<N;k++){const x=rx(),y=ry();for(let i=lastNodes.length-1;i>=0;i--){if(hitTestNode(lastNodes[i],{x,y},4))break;}}
+    const brute=(performance.now()-t)/N;
+
+    t=performance.now();
+    for(let k=0;k<N;k++){const x=rx(),y=ry();const c=tree.queryPoint(x,y,4);if(c.size){const idxs=[...c].map(id=>idToIdx.get(id)).sort((a,b)=>b-a);for(const i of idxs){if(hitTestNode(lastNodes[i],{x,y},4))break;}}}
+    const idx=(performance.now()-t)/N;
+
+    $('s-idx').textContent=idx.toFixed(4)+'ms';
+    $('s-brute').textContent=brute.toFixed(4)+'ms';
+    $('s-speed').textContent=(brute/idx).toFixed(1)+'x';
+  });
+
+  $('gen').addEventListener('click', gen);
+  $('fit').addEventListener('click', ()=>app.zoomToFit(60));
+  gen();
+})();
+</script>
+</body>
+</html>
