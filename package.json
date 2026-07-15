@@ -1,0 +1,70 @@
+{
+  "name": "dohwa",
+  "version": "0.4.0",
+  "description": "도화(圖畵) — a headless canvas drawing engine with a matrix transform model and a spatial-index performance layer. Bring your own UI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.js"
+    },
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "import": "./dist/presets.js"
+    },
+    "./nodes": {
+      "types": "./dist/nodes.d.ts",
+      "import": "./dist/nodes.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:tsc": "tsc -p tsconfig.build.json && node scripts/bundle-global.mjs",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/test.mjs",
+    "demo": "npm run build:tsc && node scripts/make-demo.mjs && node scripts/make-bench.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test"
+  },
+  "keywords": [
+    "canvas",
+    "drawing",
+    "paint",
+    "whiteboard",
+    "sketch",
+    "freehand",
+    "shapes",
+    "headless"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  },
+  "author": "Theo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KimNen/dohwa.git"
+  },
+  "homepage": "https://github.com/KimNen/dohwa#readme",
+  "bugs": {
+    "url": "https://github.com/KimNen/dohwa/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

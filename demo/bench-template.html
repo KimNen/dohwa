@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>dohwa — performance bench</title>
+<style>
+  :root { --ink:#221d18; --paper:#f3ead8; --panel:#fbf6ea; --line:#d6c8a8; --accent:#c8431f; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; font-family:system-ui,-apple-system,sans-serif; background:var(--paper); color:var(--ink); }
+  #stage { position:fixed; inset:0; background:var(--paper);
+    background-image:radial-gradient(rgba(92,82,70,.14) 1px,transparent 1.2px); background-size:26px 26px; }
+  .panel { position:fixed; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 8px 24px rgba(60,44,20,.16); z-index:10; }
+  #controls { top:16px; left:16px; padding:14px 16px; width:280px; }
+  h1 { font-size:16px; margin-bottom:2px; }
+  .sub { font-size:11px; color:#5c5246; margin-bottom:12px; }
+  .row { display:flex; align-items:center; gap:8px; margin:8px 0; font-size:13px; }
+  .row label { flex:1; }
+  button { font-family:inherit; font-size:12px; padding:6px 12px; border:1px solid var(--line);
+    background:var(--paper); border-radius:8px; cursor:pointer; }
+  button:hover { background:#ece0c6; }
+  button.primary { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  button.accent { background:var(--accent); color:#fdf3e3; border-color:var(--accent); }
+  select, input[type=range] { font-family:inherit; }
+  #stats { top:16px; right:16px; padding:12px 14px; width:230px; font-size:12px; line-height:1.9; }
+  #stats .n { font-variant-numeric:tabular-nums; font-weight:600; }
+  .metric { display:flex; justify-content:space-between; }
+  .good { color:#3e6b47; } .bad { color:var(--accent); }
+  #hint { bottom:16px; left:16px; padding:8px 12px; font-size:11px; color:#5c5246; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="controls" class="panel">
+    <h1>dohwa perf bench</h1>
+    <div class="sub">공간 인덱스 + 뷰포트 컬링 효과 측정</div>
+    <div class="row">
+      <label>노드 수</label>
+      <select id="count">
+        <option>500</option><option selected>2000</option>
+        <option>5000</option><option>10000</option><option>20000</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>종류</label>
+      <select id="kind"><option value="path">path(무거움)</option><option value="rect">rect(가벼움)</option></select>
+    </div>
+    <div class="row"><button class="primary" id="gen">생성</button><button id="fit">전체 보기</button></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <div class="row"><button class="accent" id="hittest">히트테스트 벤치 (2000회)</button></div>
+    <div class="sub" style="margin:6px 0 0">마우스로 이동/줌 하며 렌더 FPS를 관찰하세요.<br>노드가 많아도 화면 밖은 그리지 않습니다.</div>
+  </div>
+  <div id="stats" class="panel">
+    <div class="metric"><span>노드</span><span class="n" id="s-nodes">0</span></div>
+    <div class="metric"><span>화면 내 렌더</span><span class="n" id="s-visible">0</span></div>
+    <div class="metric"><span>렌더 시간</span><span class="n" id="s-render">–</span></div>
+    <div class="metric"><span>FPS</span><span class="n" id="s-fps">–</span></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:8px 0">
+    <div class="metric"><span>히트 (인덱스)</span><span class="n good" id="s-idx">–</span></div>
+    <div class="metric"><span>히트 (브루트)</span><span class="n bad" id="s-brute">–</span></div>
+    <div class="metric"><span>배속</span><span class="n" id="s-speed">–</span></div>
+  </div>
+  <div id="hint" class="panel">Space+드래그 팬 · 휠 줌 · V 선택</div>
+
+<script>/*__DOHWA_BUNDLE__*/</script>
+<script>
+(function(){
+  const { Dohwa, Quadtree, getAABB, hitTestNode } = window.Dohwa;
+  const stage = document.getElementById('stage');
+  const app = new Dohwa(stage, { tool:'select', background:'#f3ead8' });
+  window.app = app;
+
+  const $ = (id) => document.getElementById(id);
+  let lastNodes = [];
+
+  function gen() {
+    const n = +$('count').value;
+    const kind = $('kind').value;
+    const side = Math.ceil(Math.sqrt(n));
+    const gap = 46;
+    const nodes = [];
+    const palette = ['#221d18','#c8431f','#27496d','#3e6b47','#b07d2b'];
+    for (let i=0;i<n;i++){
+      const ox=(i%side)*gap, oy=Math.floor(i/side)*gap;
+      const stroke = palette[i%palette.length];
+      if (kind==='path'){
+        const pts=[]; for(let s=0;s<30;s++){const a=s/30*Math.PI*2; pts.push({x:ox+Math.cos(a)*16+Math.sin(s)*3, y:oy+Math.sin(a)*16});}
+        nodes.push({ id:'n'+i, type:'path', points:pts, style:{stroke, fill:'transparent', strokeWidth:2, opacity:1} });
+      } else {
+        nodes.push({ id:'n'+i, type:'rect', x:ox, y:oy, w:30, h:30, rotation:(i%7)*0.2,
+          style:{stroke, fill:i%3?'transparent':stroke+'33', strokeWidth:2, opacity:1} });
+      }
+    }
+    lastNodes = nodes;
+    app.loadJSON({ app:'dohwa', version:1, nodes });
+    app.zoomToFit(60);
+    $('s-nodes').textContent = n.toLocaleString();
+    measureRender();
+  }
+
+  function measureRender(){
+    const t0=performance.now();
+    // force a synchronous-ish redraw by nudging viewport imperceptibly
+    app.setZoom(app.getViewport().scale);
+    requestAnimationFrame(()=>{
+      const dt=performance.now()-t0;
+      $('s-render').textContent = dt.toFixed(1)+'ms';
+    });
+  }
+
+  // FPS meter
+  let frames=0, lastT=performance.now();
+  function loop(){
+    frames++; const now=performance.now();
+    if(now-lastT>=500){ $('s-fps').textContent=Math.round(frames*1000/(now-lastT)); frames=0; lastT=now; }
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // approximate visible count via the same cull logic
+  function updateVisible(){
+    const vp=app.getViewport();
+    const inv=1/vp.scale;
+    const view={x:-vp.x*inv, y:-vp.y*inv, w:stage.clientWidth*inv, h:stage.clientHeight*inv};
+    let vis=0;
+    for(const nd of lastNodes){ const b=getAABB(nd); if(b.x<view.x+view.w&&b.x+b.w>view.x&&b.y<view.y+view.h&&b.y+b.h>view.y) vis++; }
+    $('s-visible').textContent=vis.toLocaleString();
+  }
+  app.on('viewport', updateVisible);
+  app.on('change', updateVisible);
+
+  // hit-test benchmark: index vs brute
+  $('hittest').addEventListener('click', ()=>{
+    if(!lastNodes.length){ alert('먼저 생성하세요'); return; }
+    const items=lastNodes.map(n=>({id:n.id, box:getAABB(n)}));
+    const tree=Quadtree.build(items);
+    const idToIdx=new Map(lastNodes.map((n,i)=>[n.id,i]));
+    const box=items.reduce((a,it)=>({minx:Math.min(a.minx,it.box.x),miny:Math.min(a.miny,it.box.y),maxx:Math.max(a.maxx,it.box.x+it.box.w),maxy:Math.max(a.maxy,it.box.y+it.box.h)}),{minx:1e9,miny:1e9,maxx:-1e9,maxy:-1e9});
+    const rx=()=>box.minx+Math.random()*(box.maxx-box.minx);
+    const ry=()=>box.miny+Math.random()*(box.maxy-box.miny);
+    const N=2000;
+
+    let t=performance.now();
+    for(let k=0;k<N;k++){const x=rx(),y=ry();for(let i=lastNodes.length-1;i>=0;i--){if(hitTestNode(lastNodes[i],{x,y},4))break;}}
+    const brute=(performance.now()-t)/N;
+
+    t=performance.now();
+    for(let k=0;k<N;k++){const x=rx(),y=ry();const c=tree.queryPoint(x,y,4);if(c.size){const idxs=[...c].map(id=>idToIdx.get(id)).sort((a,b)=>b-a);for(const i of idxs){if(hitTestNode(lastNodes[i],{x,y},4))break;}}}
+    const idx=(performance.now()-t)/N;
+
+    $('s-idx').textContent=idx.toFixed(4)+'ms';
+    $('s-brute').textContent=brute.toFixed(4)+'ms';
+    $('s-speed').textContent=(brute/idx).toFixed(1)+'x';
+  });
+
+  $('gen').addEventListener('click', gen);
+  $('fit').addEventListener('click', ()=>app.zoomToFit(60));
+  gen();
+})();
+</script>
+</body>
+</html>

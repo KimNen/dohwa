@@ -1,0 +1,12 @@
+console.log('=== core: geometry, history, rotation, svg ===');
+await import('./test-core.mjs');
+console.log('\n=== matrix: affine algebra ===');
+await import('./test-matrix.mjs');
+console.log('\n=== transform: skew, non-uniform, composition ===');
+await import('./test-transform.mjs');
+console.log('\n=== spatial: quadtree ===');
+await import('./test-spatial.mjs');
+console.log('\n=== cache: object cache keys ===');
+await import('./test-cache.mjs');
+console.log('\n=== ui material, presets, node factories ===');
+await import('./test-ui.mjs');
