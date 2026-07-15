@@ -5,3 +5,4 @@ examples
 tsconfig*.json
 ARCHITECTURE.md
 PUBLISHING.md
+CLAUDE.md
