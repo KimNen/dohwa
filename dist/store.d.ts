@@ -22,6 +22,10 @@ export interface DohwaUIState {
     hasLockedNodes: boolean;
     /** true if a replay is possible (2+ timeline frames) */
     canReplay: boolean;
+    /** true while the interactive image-crop editor is open */
+    isCropping: boolean;
+    /** true when exactly one unlocked image is selected */
+    canCrop: boolean;
 }
 export type Unsubscribe = () => void;
 export declare class DohwaStore {

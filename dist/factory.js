@@ -32,14 +32,15 @@ export function triangle(init) {
     };
 }
 export function line(init) {
-    const { x1, y1, x2, y2, arrow, style, rotation, locked } = init;
+    const { x1, y1, x2, y2, arrow, arrowStart, style, rotation, locked } = init;
     return {
-        id: createId(), type: 'line', x1, y1, x2, y2, arrow,
+        id: createId(), type: 'line', x1, y1, x2, y2, arrow, arrowStart,
         style: withStyle(style), rotation, locked,
     };
 }
 export function arrow(init) {
-    return line({ ...init, arrow: true });
+    const { both, ...rest } = init;
+    return line({ ...rest, arrow: true, arrowStart: both || undefined });
 }
 export function path(init) {
     const { points, style, rotation, locked } = init;
@@ -73,9 +74,9 @@ export function text(init) {
     };
 }
 export function image(init) {
-    const { x, y, w, h, src, flipX, flipY, style, rotation, locked } = init;
+    const { x, y, w, h, src, flipX, flipY, crop, style, rotation, locked } = init;
     return {
-        id: createId(), type: 'image', x, y, w, h, src, flipX, flipY,
+        id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
         style: withStyle({ stroke: 'transparent', ...style }),
         rotation, locked,
     };

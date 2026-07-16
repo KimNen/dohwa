@@ -70,20 +70,24 @@ export function triangle(init: BoxInit & { flipY?: boolean }): TriangleNode {
 
 export function line(init: {
   x1: number; y1: number; x2: number; y2: number;
-  arrow?: boolean; style?: Partial<Style>; rotation?: number; locked?: boolean;
+  arrow?: boolean; arrowStart?: boolean;
+  style?: Partial<Style>; rotation?: number; locked?: boolean;
 }): LineNode {
-  const { x1, y1, x2, y2, arrow, style, rotation, locked } = init;
+  const { x1, y1, x2, y2, arrow, arrowStart, style, rotation, locked } = init;
   return {
-    id: createId(), type: 'line', x1, y1, x2, y2, arrow,
+    id: createId(), type: 'line', x1, y1, x2, y2, arrow, arrowStart,
     style: withStyle(style), rotation, locked,
   };
 }
 
 export function arrow(init: {
   x1: number; y1: number; x2: number; y2: number;
+  /** arrowhead on both ends (양방향) */
+  both?: boolean;
   style?: Partial<Style>; rotation?: number; locked?: boolean;
 }): LineNode {
-  return line({ ...init, arrow: true });
+  const { both, ...rest } = init;
+  return line({ ...rest, arrow: true, arrowStart: both || undefined });
 }
 
 export function path(init: {
@@ -127,10 +131,12 @@ export function text(init: {
 
 export function image(init: BoxInit & {
   src: string; flipX?: boolean; flipY?: boolean;
+  /** visible source window, fractions 0..1 of the original image */
+  crop?: { x: number; y: number; w: number; h: number };
 }): ImageNode {
-  const { x, y, w, h, src, flipX, flipY, style, rotation, locked } = init;
+  const { x, y, w, h, src, flipX, flipY, crop, style, rotation, locked } = init;
   return {
-    id: createId(), type: 'image', x, y, w, h, src, flipX, flipY,
+    id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
     style: withStyle({ stroke: 'transparent', ...style }),
     rotation, locked,
   };

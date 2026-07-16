@@ -54,3 +54,30 @@ ok('preset -> factory integration', themed.style.stroke === '#e11d48' && themed.
 // 회전 노드 팩토리
 const rot = rect({ x:0, y:0, w:100, h:20, rotation: Math.PI/2 });
 ok('rotation flows into AABB', Math.abs(getAABB(rot).h - 100) < 1e-6);
+
+// --- 양방향 화살표 · 크롭 · 단축키 재료 (v0.5)
+const { getToolVariants, SHORTCUT_SECTIONS } = await import('../dist/ui.js');
+const { image, line } = await import('../dist/nodes.js');
+
+const dbl = arrow({ x1: 0, y1: 0, x2: 50, y2: 0, both: true });
+ok('arrow factory: both heads', dbl.arrow === true && dbl.arrowStart === true);
+ok('line factory: arrowStart passthrough', line({ x1:0, y1:0, x2:1, y2:1, arrowStart: true }).arrowStart === true);
+
+const arrowBoth = getToolMeta('arrow-both');
+ok('arrow-both is a variant of arrow', arrowBoth && arrowBoth.variantOf === 'arrow');
+ok('getToolVariants finds it', getToolVariants('arrow').some((m) => m.tool === 'arrow-both'));
+ok('variants have no own shortcut slot', getToolVariants('arrow').every((m) => !m.shortcut));
+
+ok('crop action meta', getActionMeta('crop').needsSelection === true && getActionMeta('crop').icon.length > 0);
+
+const cropped = image({ x: 0, y: 0, w: 10, h: 10, src: 'x', crop: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } });
+ok('image factory keeps crop', cropped.crop && cropped.crop.w === 0.5);
+ok('cropped image scene validates', validateScene(scene([cropped, dbl])).valid === true);
+
+ok('shortcut sections exist', SHORTCUT_SECTIONS.length >= 4);
+ok('shortcut items have keys+label', SHORTCUT_SECTIONS.every((s) =>
+  s.items.every((i) => i.keys.length > 0 && i.label && i.key)));
+ok('shortcut tool rows track TOOL_METAS', SHORTCUT_SECTIONS.find((s) => s.key === 'tools')
+  .items.some((i) => i.key === 'pen' && i.keys[0] === 'P'));
+const allShortcutKeys = SHORTCUT_SECTIONS.flatMap((s) => s.items.map((i) => `${s.key}:${i.key}`));
+ok('shortcut item keys unique', new Set(allShortcutKeys).size === allShortcutKeys.length);

@@ -21,6 +21,13 @@ export interface ToolMeta {
     group: 'draw' | 'shape' | 'view';
     /** true if the tool creates nodes (vs. select / pan / eraser) */
     creates: boolean;
+    /**
+     * When set, this tool is a variant of another tool and toolbars should
+     * nest it under that tool's button (e.g. a right-click / long-press
+     * sub-menu) instead of giving it its own top-level slot.
+     * Pressing the parent's shortcut again cycles through its variants.
+     */
+    variantOf?: Tool;
 }
 export declare const ICON_ATTRS: {
     readonly viewBox: "0 0 24 24";
@@ -33,9 +40,11 @@ export declare const ICON_ATTRS: {
 export declare const TOOL_METAS: readonly ToolMeta[];
 export declare function getToolMeta(tool: Tool): ToolMeta | undefined;
 export declare function getToolsByGroup(group: ToolMeta['group']): ToolMeta[];
+/** Variants nested under a tool's button (for flyout / sub-toolbar menus). */
+export declare function getToolVariants(tool: Tool): ToolMeta[];
 /** Build a `<path d="...">` string set — handy for innerHTML-based UIs. */
 export declare function toolIconSVG(tool: Tool, size?: number): string;
-export type ActionKey = 'undo' | 'redo' | 'group' | 'ungroup' | 'bringToFront' | 'sendToBack' | 'flipH' | 'flipV' | 'lock' | 'duplicate' | 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll' | 'replay' | 'zoomIn' | 'zoomOut' | 'zoomToFit' | 'clear';
+export type ActionKey = 'undo' | 'redo' | 'group' | 'ungroup' | 'bringToFront' | 'sendToBack' | 'flipH' | 'flipV' | 'crop' | 'lock' | 'duplicate' | 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll' | 'replay' | 'zoomIn' | 'zoomOut' | 'zoomToFit' | 'clear';
 export interface ActionMeta {
     key: ActionKey;
     label: string;
@@ -49,4 +58,25 @@ export interface ActionMeta {
 }
 export declare const ACTION_METAS: readonly ActionMeta[];
 export declare function getActionMeta(key: ActionKey): ActionMeta | undefined;
+/**
+ * One entry of the keyboard-shortcut reference. `keys` are the chips a help
+ * screen renders (['Ctrl', 'Shift', 'Z'] → Ctrl + Shift + Z); `key` is a
+ * stable identifier for your own i18n dictionary, like ToolMeta.key.
+ * 'Ctrl' means ⌘ on macOS — the engine accepts either.
+ */
+export interface ShortcutItem {
+    key: string;
+    label: string;
+    keys: string[];
+}
+export interface ShortcutSection {
+    key: string;
+    label: string;
+    items: ShortcutItem[];
+}
+/**
+ * The full keyboard map, grouped for a help / cheat-sheet screen.
+ * Tool rows are derived from TOOL_METAS so the two never drift apart.
+ */
+export declare const SHORTCUT_SECTIONS: readonly ShortcutSection[];
 //# sourceMappingURL=tools.d.ts.map

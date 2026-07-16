@@ -22,6 +22,8 @@ export {
   nodeMatrix,
   toLocalPoint,
   hasTransform,
+  cropFullRect,
+  cropFromRects,
 } from './geometry/geometry.js';
 
 // ---------------------------------------------------------------- affine matrix (DOM-free)

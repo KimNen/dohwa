@@ -83,6 +83,8 @@ export interface LineNode extends NodeBase {
     y2: number;
     /** draw an arrowhead at (x2, y2) */
     arrow?: boolean;
+    /** draw an arrowhead at (x1, y1) too — a double-headed arrow */
+    arrowStart?: boolean;
 }
 export interface TextNode extends NodeBase {
     type: 'text';
@@ -92,6 +94,18 @@ export interface TextNode extends NodeBase {
     fontSize: number;
     fontFamily: string;
     /** measured box — maintained by the engine */
+    w: number;
+    h: number;
+}
+/**
+ * Source-image crop window, as fractions of the ORIGINAL image (0..1).
+ * `{ x: 0.25, y: 0, w: 0.5, h: 1 }` shows the horizontal middle half.
+ * Stored normalized so it survives resizes and never needs the image's
+ * natural pixel size (which the scene JSON does not carry).
+ */
+export interface CropRect {
+    x: number;
+    y: number;
     w: number;
     h: number;
 }
@@ -105,13 +119,15 @@ export interface ImageNode extends NodeBase {
     src: string;
     flipX?: boolean;
     flipY?: boolean;
+    /** visible source window; absent = the whole image */
+    crop?: CropRect;
 }
 export interface GroupNode extends NodeBase {
     type: 'group';
     children: DohwaNode[];
 }
 export type DohwaNode = PathNode | RectNode | EllipseNode | DiamondNode | TriangleNode | LineNode | TextNode | ImageNode | GroupNode;
-export type Tool = 'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'text' | 'eraser' | 'pan';
+export type Tool = 'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan';
 export interface SceneJSON {
     app: 'dohwa';
     version: 1;
@@ -155,7 +171,7 @@ export interface ReplayOptions {
     /** snapshots per second (default 5) */
     fps?: number;
 }
-export type DohwaEvent = 'change' | 'selection' | 'tool' | 'history' | 'viewport' | 'textedit' | 'replay';
+export type DohwaEvent = 'change' | 'selection' | 'tool' | 'history' | 'viewport' | 'textedit' | 'crop' | 'replay';
 export interface HistoryState {
     canUndo: boolean;
     canRedo: boolean;

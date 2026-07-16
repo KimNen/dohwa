@@ -1,5 +1,6 @@
 import type {
   BBox,
+  CropRect,
   DohwaEvent,
   DohwaNode,
   DohwaOptions,
@@ -21,15 +22,20 @@ import { DEFAULT_STYLE } from '../types.js';
 import {
   bboxCenter,
   bboxIntersects,
+  cropFromRects,
+  cropFullRect,
   flipNode,
   getAABB,
   getBBox,
   hitTestNode,
+  nodeMatrix,
+  pointInBBox,
   rotatePoint,
   scaleNodeInto,
   translateNode,
   unionBBox,
 } from '../geometry/geometry.js';
+import { isIdentity } from '../geometry/matrix.js';
 import { LINE_HEIGHT, measureText, renderScene, type ImageCache } from '../render/render.js';
 import { sceneToSVG } from '../render/svg.js';
 import { Emitter, History } from './core.js';
@@ -73,7 +79,19 @@ type InteractionMode =
     }
   | { kind: 'marquee'; start: Point; current: Point; base: string[] }
   | { kind: 'erase'; erased: boolean }
-  | { kind: 'pan'; lastScreen: Point };
+  | { kind: 'pan'; lastScreen: Point }
+  | {
+      kind: 'crop-resize';
+      handle: number;
+      /** node rect at drag start (local, drag-start frame) */
+      from: BBox;
+      /** full-image rect at drag start (visual position of the uncropped image) */
+      full: BBox;
+      /** rotation pivot at drag start */
+      center: Point;
+      rotation: number;
+    }
+  | { kind: 'crop-pan'; lastLocal: Point; center: Point; rotation: number };
 
 /** handle factors: 0..7 → nw, n, ne, e, se, s, sw, w */
 const HANDLES: ReadonlyArray<{ hx: number; hy: number; cursor: string }> = [
@@ -113,6 +131,7 @@ export class Dohwa {
   private maxZoom: number;
   private clipboard: DohwaNode[] = [];
   private editing: { node: TextNode; el: HTMLTextAreaElement } | null = null;
+  private cropping: { node: ImageNode; original: ImageNode } | null = null;
   private replaying = false;
   private timeline: string[] = [];
 
@@ -174,6 +193,7 @@ export class Dohwa {
 
   setTool(tool: Tool): void {
     if (this.tool === tool) return;
+    this.applyCrop();
     this.finishTextEdit();
     this.tool = tool;
     if (tool !== 'select') this.clearSelection();
@@ -225,6 +245,7 @@ export class Dohwa {
 
   deleteSelection(): void {
     if (this.selection.size === 0) return;
+    this.cancelCrop();
     this.nodes = this.nodes.filter((n) => !this.selection.has(n.id));
     this.selection.clear();
     this.emitSelection();
@@ -526,15 +547,103 @@ export class Dohwa {
     });
   }
 
+  // ================================================================ image crop
+
+  /** True when exactly one unlocked image is selected (crop can start). */
+  canCrop(): boolean {
+    if (this.replaying || this.selection.size !== 1) return false;
+    const node = this.selectedNodes()[0];
+    return !!node && node.type === 'image' && !node.locked;
+  }
+
+  /** True while the interactive crop editor is open. */
+  isCropping(): boolean {
+    return this.cropping !== null;
+  }
+
+  /** id of the image being cropped, or null. */
+  getCroppingId(): string | null {
+    return this.cropping?.node.id ?? null;
+  }
+
+  /**
+   * Enter interactive crop mode on the selected image (also reachable by
+   * double-clicking an image). Drag the handles to trim, drag inside to
+   * slide the image behind the window; Enter applies, Esc cancels.
+   */
+  startCrop(): boolean {
+    if (this.cropping) return true;
+    if (!this.canCrop()) return false;
+    this.finishTextEdit();
+    this.setTool('select');
+    const node = this.selectedNodes()[0] as ImageNode;
+    this.cropping = { node, original: deepClone(node) };
+    this.emitter.emit('crop', node.id);
+    this.requestRender();
+    return true;
+  }
+
+  /** Commit the pending crop and leave crop mode. No-op when not cropping. */
+  applyCrop(): void {
+    if (!this.cropping) return;
+    const { node } = this.cropping;
+    this.cropping = null;
+    this.mode = { kind: 'none' };
+    const c = node.crop;
+    // a window that covers (almost) everything is no crop at all
+    if (c && c.x <= 0.001 && c.y <= 0.001 && c.w >= 0.998 && c.h >= 0.998) {
+      delete node.crop;
+    }
+    this.commit();
+    this.emitter.emit('crop', null);
+    this.requestRender();
+  }
+
+  /** Discard the pending crop, restoring the image as it was. */
+  cancelCrop(): void {
+    if (!this.cropping) return;
+    const { node, original } = this.cropping;
+    this.cropping = null;
+    this.mode = { kind: 'none' };
+    Object.assign(node, deepClone(original));
+    if (original.crop === undefined) delete node.crop;
+    this.invalidateIndex();
+    this.emitter.emit('crop', null);
+    this.requestRender();
+  }
+
+  /** Set (or clear, with null) an image's crop window programmatically. */
+  setImageCrop(id: string, crop: CropRect | null): boolean {
+    const node = this.nodes.find((n) => n.id === id);
+    if (!node || node.type !== 'image') return false;
+    if (crop === null) {
+      delete node.crop;
+    } else {
+      const w = Math.min(Math.max(crop.w, 0.01), 1);
+      const h = Math.min(Math.max(crop.h, 0.01), 1);
+      node.crop = {
+        x: Math.min(Math.max(crop.x, 0), 1 - w),
+        y: Math.min(Math.max(crop.y, 0), 1 - h),
+        w,
+        h,
+      };
+    }
+    this.commit();
+    this.requestRender();
+    return true;
+  }
+
   // ================================================================ history / replay
 
   undo(): void {
+    this.cancelCrop();
     this.finishTextEdit();
     const snapshot = this.history.undo();
     if (snapshot !== null) this.restore(snapshot);
   }
 
   redo(): void {
+    this.cancelCrop();
     const snapshot = this.history.redo();
     if (snapshot !== null) this.restore(snapshot);
   }
@@ -560,6 +669,7 @@ export class Dohwa {
   /** Replay the drawing chronology from the first stroke to now. */
   async replay(options: ReplayOptions = {}): Promise<void> {
     if (this.replaying || this.timeline.length < 2) return;
+    this.cancelCrop();
     this.finishTextEdit();
     this.replaying = true;
     this.emitter.emit('replay', true);
@@ -580,6 +690,7 @@ export class Dohwa {
 
   clear(): void {
     if (this.nodes.length === 0) return;
+    this.cancelCrop();
     this.finishTextEdit();
     this.nodes = [];
     this.selection.clear();
@@ -656,6 +767,7 @@ export class Dohwa {
   loadJSON(json: SceneJSON | string): void {
     const data: SceneJSON = typeof json === 'string' ? JSON.parse(json) : json;
     if (!data || !Array.isArray(data.nodes)) throw new Error('dohwa: invalid scene JSON');
+    this.cancelCrop();
     this.finishTextEdit();
     this.nodes = deepClone(data.nodes);
     this.selection.clear();
@@ -670,6 +782,8 @@ export class Dohwa {
 
   /** Render content to a PNG dataURL. */
   exportPNG(options: ExportPNGOptions = {}): string {
+    // an open text editor holds its text in the textarea, not the node
+    this.finishTextEdit();
     const scale = options.scale ?? 2;
     const padding = options.padding ?? 24;
     const box =
@@ -695,11 +809,13 @@ export class Dohwa {
 
   /** Export the scene as a standalone SVG string. */
   exportSVG(options: ExportSVGOptions = {}): string {
+    this.finishTextEdit();
     return sceneToSVG(this.nodes, options);
   }
 
   destroy(): void {
     this.disposed = true;
+    this.cancelCrop();
     this.finishTextEdit();
     cancelAnimationFrame(this.rafId);
     this.resizeObserver.disconnect();
@@ -856,6 +972,7 @@ export class Dohwa {
     ctx.scale(this.viewport.scale, this.viewport.scale);
     const visible = this.visibleNodes();
     renderScene(ctx, visible, this.images, { skipId: this.editing?.node.id ?? null });
+    if (this.cropping) this.renderCropGhost(ctx);
     ctx.restore();
 
     if (!this.replaying) this.renderOverlay(ctx);
@@ -871,7 +988,13 @@ export class Dohwa {
     if (this.nodes.length < 200) return this.nodes;
     // During an active drag the index is intentionally stale; rebuilding it
     // every frame would cost more than culling saves, so draw everything.
-    if (this.mode.kind === 'move' || this.mode.kind === 'resize' || this.mode.kind === 'rotate') {
+    if (
+      this.mode.kind === 'move' ||
+      this.mode.kind === 'resize' ||
+      this.mode.kind === 'rotate' ||
+      this.mode.kind === 'crop-resize' ||
+      this.mode.kind === 'crop-pan'
+    ) {
       return this.nodes;
     }
     const inv = 1 / this.viewport.scale;
@@ -919,7 +1042,80 @@ export class Dohwa {
     return { handles, rotate, corners };
   }
 
+  /** Crop editor frame: the image's own rect, rotation-aware. */
+  private cropFrame(): Frame {
+    const node = this.cropping!.node;
+    const box = getBBox(node);
+    return { box, rotation: node.rotation ?? 0, center: bboxCenter(box) };
+  }
+
+  /**
+   * While cropping: the full (uncropped) image as a ghost behind the scene,
+   * plus a crisp re-draw of the cropped node on top. Runs in world space.
+   */
+  private renderCropGhost(ctx: CanvasRenderingContext2D): void {
+    const node = this.cropping!.node;
+    const img = this.images.get(node.src);
+    const box = getBBox(node);
+    const full = cropFullRect(box, node.crop, node.flipX, node.flipY);
+    ctx.save();
+    const m = nodeMatrix(node);
+    if (!isIdentity(m)) ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      if (node.flipX || node.flipY) {
+        const cx = box.x + box.w / 2;
+        const cy = box.y + box.h / 2;
+        ctx.translate(cx, cy);
+        ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
+        ctx.translate(-cx, -cy);
+        // `full` is the VISUAL rect; mirror it back into pre-flip draw space
+        const dx = node.flipX ? 2 * cx - full.x - full.w : full.x;
+        const dy = node.flipY ? 2 * cy - full.y - full.h : full.y;
+        ctx.drawImage(img, dx, dy, full.w, full.h);
+      } else {
+        ctx.drawImage(img, full.x, full.y, full.w, full.h);
+      }
+      ctx.restore();
+    }
+    const inv = 1 / this.viewport.scale;
+    ctx.strokeStyle = SELECTION_COLOR;
+    ctx.lineWidth = 1 * inv;
+    ctx.setLineDash([4 * inv, 3 * inv]);
+    ctx.strokeRect(full.x, full.y, full.w, full.h);
+    ctx.restore();
+    // re-draw the cropped image so the visible window stays crisp over the ghost
+    renderScene(ctx, [node], this.images);
+  }
+
+  /** Screen-space crop window border + handles (solid, unlike selection). */
+  private renderCropOverlay(ctx: CanvasRenderingContext2D): void {
+    const frame = this.cropFrame();
+    const { handles, corners } = this.framePoints(frame);
+    ctx.save();
+    ctx.strokeStyle = SELECTION_COLOR;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    for (const h of handles) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.rect(h.x - 4, h.y - 4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private renderOverlay(ctx: CanvasRenderingContext2D): void {
+    if (this.cropping) {
+      this.renderCropOverlay(ctx);
+      return;
+    }
     const frame = this.selectionFrame();
     if (frame) {
       const { handles, rotate, corners } = this.framePoints(frame);
@@ -1110,6 +1306,11 @@ export class Dohwa {
       return;
     }
 
+    if (this.cropping) {
+      this.onCropPointerDown(screen, world);
+      return;
+    }
+
     switch (this.tool) {
       case 'select': {
         const handle = this.handleAt(screen);
@@ -1191,7 +1392,8 @@ export class Dohwa {
         break;
       }
       case 'line':
-      case 'arrow': {
+      case 'arrow':
+      case 'arrow-both': {
         const node: DohwaNode = {
           id: genId(),
           type: 'line',
@@ -1199,7 +1401,8 @@ export class Dohwa {
           y1: world.y,
           x2: world.x,
           y2: world.y,
-          arrow: this.tool === 'arrow',
+          arrow: this.tool !== 'line',
+          arrowStart: this.tool === 'arrow-both' || undefined,
           style: { ...this.style },
         };
         this.nodes.push(node);
@@ -1232,6 +1435,39 @@ export class Dohwa {
     }
   }
 
+  /** Pointer-down routing while the crop editor is open. */
+  private onCropPointerDown(screen: Point, world: Point): void {
+    const node = this.cropping!.node;
+    const frame = this.cropFrame();
+    const { handles } = this.framePoints(frame);
+    for (let i = 0; i < handles.length; i++) {
+      if (Math.abs(screen.x - handles[i].x) <= 6 && Math.abs(screen.y - handles[i].y) <= 6) {
+        this.mode = {
+          kind: 'crop-resize',
+          handle: i,
+          from: { ...frame.box },
+          full: cropFullRect(frame.box, node.crop, node.flipX, node.flipY),
+          center: frame.center,
+          rotation: frame.rotation,
+        };
+        return;
+      }
+    }
+    const local = rotatePoint(world, frame.center, -frame.rotation);
+    const full = cropFullRect(frame.box, node.crop, node.flipX, node.flipY);
+    if (pointInBBox(local, full, this.hitTolerance())) {
+      this.mode = {
+        kind: 'crop-pan',
+        lastLocal: local,
+        center: frame.center,
+        rotation: frame.rotation,
+      };
+      return;
+    }
+    // clicked away from the image — treat it as "done"
+    this.applyCrop();
+  }
+
   private eraseAt(world: Point): void {
     const hit = this.hitTopmost(world);
     if (hit && this.mode.kind === 'erase') {
@@ -1250,6 +1486,21 @@ export class Dohwa {
 
     switch (mode.kind) {
       case 'none': {
+        if (this.cropping) {
+          const node = this.cropping.node;
+          const frame = this.cropFrame();
+          const { handles } = this.framePoints(frame);
+          for (let i = 0; i < handles.length; i++) {
+            if (Math.abs(screen.x - handles[i].x) <= 6 && Math.abs(screen.y - handles[i].y) <= 6) {
+              this.canvas.style.cursor = HANDLES[i].cursor;
+              return;
+            }
+          }
+          const local = rotatePoint(world, frame.center, -frame.rotation);
+          const full = cropFullRect(frame.box, node.crop, node.flipX, node.flipY);
+          this.canvas.style.cursor = pointInBBox(local, full, 0) ? 'move' : 'default';
+          return;
+        }
         if (this.tool === 'select') {
           const handle = this.handleAt(screen);
           if (handle?.kind === 'rotate') this.canvas.style.cursor = 'grab';
@@ -1400,6 +1651,61 @@ export class Dohwa {
       case 'erase':
         this.eraseAt(world);
         return;
+      case 'crop-resize': {
+        const node = this.cropping?.node;
+        if (!node) return;
+        const h = HANDLES[mode.handle];
+        const { from, full } = mode;
+        // everything below works in the drag-start local frame; because the
+        // image content is held world-fixed, mapping the pointer with the
+        // drag-start pivot stays exact for the whole gesture
+        const local = rotatePoint(world, mode.center, -mode.rotation);
+        let { x, y, w, h: hh } = from;
+        if (h.hx === 0) {
+          const right = from.x + from.w;
+          x = Math.min(Math.max(local.x, full.x), right - 1);
+          w = right - x;
+        } else if (h.hx === 1) {
+          w = Math.min(Math.max(local.x, from.x + 1), full.x + full.w) - from.x;
+        }
+        if (h.hy === 0) {
+          const bottom = from.y + from.h;
+          y = Math.min(Math.max(local.y, full.y), bottom - 1);
+          hh = bottom - y;
+        } else if (h.hy === 1) {
+          hh = Math.min(Math.max(local.y, from.y + 1), full.y + full.h) - from.y;
+        }
+        const rect: BBox = { x, y, w, h: hh };
+        node.crop = cropFromRects(rect, full, node.flipX, node.flipY);
+        // the rotation pivot is the rect center; as the rect changes, shift it
+        // so the underlying image stays fixed in world space
+        const dcx = rect.x + rect.w / 2 - mode.center.x;
+        const dcy = rect.y + rect.h / 2 - mode.center.y;
+        const spun = rotatePoint({ x: dcx, y: dcy }, { x: 0, y: 0 }, mode.rotation);
+        node.x = rect.x + (spun.x - dcx);
+        node.y = rect.y + (spun.y - dcy);
+        node.w = rect.w;
+        node.h = rect.h;
+        this.requestRender();
+        return;
+      }
+      case 'crop-pan': {
+        const node = this.cropping?.node;
+        if (!node) return;
+        const local = rotatePoint(world, mode.center, -mode.rotation);
+        const dx = local.x - mode.lastLocal.x;
+        const dy = local.y - mode.lastLocal.y;
+        if (dx === 0 && dy === 0) return;
+        mode.lastLocal = local;
+        const box = getBBox(node);
+        const full = cropFullRect(box, node.crop, node.flipX, node.flipY);
+        // slide the image behind the fixed window, never uncovering it
+        full.x = Math.min(box.x, Math.max(box.x + box.w - full.w, full.x + dx));
+        full.y = Math.min(box.y, Math.max(box.y + box.h - full.h, full.y + dy));
+        node.crop = cropFromRects(box, full, node.flipX, node.flipY);
+        this.requestRender();
+        return;
+      }
     }
   }
 
@@ -1439,13 +1745,18 @@ export class Dohwa {
       case 'marquee':
         this.requestRender();
         break;
+      case 'crop-resize':
+      case 'crop-pan':
+        // committed later by applyCrop / discarded by cancelCrop
+        this.requestRender();
+        break;
       case 'none':
         break;
     }
   }
 
   private onDoubleClick(e: MouseEvent): void {
-    if (this.replaying || this.tool !== 'select') return;
+    if (this.replaying || this.cropping || this.tool !== 'select') return;
     const rect = this.canvas.getBoundingClientRect();
     const world = this.screenToWorld({ x: e.clientX - rect.x, y: e.clientY - rect.y });
     const hit = this.hitTopmost(world);
@@ -1453,6 +1764,10 @@ export class Dohwa {
       this.selection = new Set([hit.id]);
       this.emitSelection();
       this.startTextEdit(hit);
+    } else if (hit && hit.type === 'image' && !hit.locked) {
+      this.selection = new Set([hit.id]);
+      this.emitSelection();
+      this.startCrop();
     }
   }
 
@@ -1482,6 +1797,18 @@ export class Dohwa {
   private onKeyDown(e: KeyboardEvent): void {
     if (this.replaying || this.isEditableTarget(e)) return;
     const mod = e.ctrlKey || e.metaKey;
+
+    // crop editor owns the keyboard: Enter applies, Esc cancels
+    if (this.cropping) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.applyCrop();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.cancelCrop();
+      }
+      return;
+    }
 
     if (e.code === 'Space') {
       this.spaceDown = true;
@@ -1563,7 +1890,11 @@ export class Dohwa {
       e: 'eraser',
       h: 'pan',
     };
-    const tool = map[e.key.toLowerCase()];
+    let tool = map[e.key.toLowerCase()];
+    // pressing A again cycles the arrow's variants: single ↔ double-headed
+    if (tool === 'arrow' && (this.tool === 'arrow' || this.tool === 'arrow-both')) {
+      tool = this.tool === 'arrow' ? 'arrow-both' : 'arrow';
+    }
     if (tool) this.setTool(tool);
   }
 
@@ -1584,6 +1915,7 @@ export class Dohwa {
       triangle: 'crosshair',
       line: 'crosshair',
       arrow: 'crosshair',
+      'arrow-both': 'crosshair',
       text: 'text',
       eraser: 'crosshair',
       pan: 'grab',

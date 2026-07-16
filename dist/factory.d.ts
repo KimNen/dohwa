@@ -27,6 +27,7 @@ export declare function line(init: {
     x2: number;
     y2: number;
     arrow?: boolean;
+    arrowStart?: boolean;
     style?: Partial<Style>;
     rotation?: number;
     locked?: boolean;
@@ -36,6 +37,8 @@ export declare function arrow(init: {
     y1: number;
     x2: number;
     y2: number;
+    /** arrowhead on both ends (양방향) */
+    both?: boolean;
     style?: Partial<Style>;
     rotation?: number;
     locked?: boolean;
@@ -64,6 +67,13 @@ export declare function image(init: BoxInit & {
     src: string;
     flipX?: boolean;
     flipY?: boolean;
+    /** visible source window, fractions 0..1 of the original image */
+    crop?: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+    };
 }): ImageNode;
 export declare function group(children: DohwaNode[], init?: {
     style?: Partial<Style>;

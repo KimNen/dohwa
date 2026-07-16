@@ -93,6 +93,8 @@ export interface LineNode extends NodeBase {
   y2: number;
   /** draw an arrowhead at (x2, y2) */
   arrow?: boolean;
+  /** draw an arrowhead at (x1, y1) too — a double-headed arrow */
+  arrowStart?: boolean;
 }
 
 export interface TextNode extends NodeBase {
@@ -107,6 +109,19 @@ export interface TextNode extends NodeBase {
   h: number;
 }
 
+/**
+ * Source-image crop window, as fractions of the ORIGINAL image (0..1).
+ * `{ x: 0.25, y: 0, w: 0.5, h: 1 }` shows the horizontal middle half.
+ * Stored normalized so it survives resizes and never needs the image's
+ * natural pixel size (which the scene JSON does not carry).
+ */
+export interface CropRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface ImageNode extends NodeBase {
   type: 'image';
   x: number;
@@ -117,6 +132,8 @@ export interface ImageNode extends NodeBase {
   src: string;
   flipX?: boolean;
   flipY?: boolean;
+  /** visible source window; absent = the whole image */
+  crop?: CropRect;
 }
 
 export interface GroupNode extends NodeBase {
@@ -144,6 +161,7 @@ export type Tool =
   | 'triangle'
   | 'line'
   | 'arrow'
+  | 'arrow-both'
   | 'text'
   | 'eraser'
   | 'pan';
@@ -204,6 +222,7 @@ export type DohwaEvent =
   | 'history'
   | 'viewport'
   | 'textedit'
+  | 'crop'
   | 'replay';
 
 export interface HistoryState {

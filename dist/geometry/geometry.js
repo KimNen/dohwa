@@ -314,6 +314,39 @@ export function flipNode(node, axis, center) {
             break;
     }
 }
+// ---------------------------------------------------------------- image crop
+/**
+ * The rect the FULL (uncropped) image would occupy, given the node's visible
+ * rect `box` and its crop window. This is where the crop editor draws the
+ * ghost image. Flip flags matter because flipping mirrors the rendered
+ * content around the node rect's center, so the on-screen position of the
+ * uncropped remainder mirrors too.
+ */
+export function cropFullRect(box, crop, flipX = false, flipY = false) {
+    if (!crop)
+        return { ...box };
+    const w = box.w / crop.w;
+    const h = box.h / crop.h;
+    const relX = flipX ? 1 - crop.x - crop.w : crop.x;
+    const relY = flipY ? 1 - crop.y - crop.h : crop.y;
+    return { x: box.x - relX * w, y: box.y - relY * h, w, h };
+}
+/**
+ * Inverse of cropFullRect: the crop window (source fractions) that shows
+ * exactly `box` out of an image visually occupying `full`.
+ */
+export function cropFromRects(box, full, flipX = false, flipY = false) {
+    const relX = (box.x - full.x) / full.w;
+    const relY = (box.y - full.y) / full.h;
+    const w = box.w / full.w;
+    const h = box.h / full.h;
+    return {
+        x: flipX ? 1 - relX - w : relX,
+        y: flipY ? 1 - relY - h : relY,
+        w,
+        h,
+    };
+}
 // ---------------------------------------------------------------- hit testing
 export function distToSegment(p, a, b) {
     const dx = b.x - a.x;

@@ -26,9 +26,9 @@ and a server route that only builds scenes never touches DOM code.
 
 **Drawing**
 - ✍️ Freehand pen with quadratic smoothing
-- ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow** (Shift = square / circle / 45° snap)
+- ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow · double-headed arrow** (Shift = square / circle / 45° snap; press `A` again to toggle both heads)
 - 🔤 **Text** — click to create, double-click to edit inline (floating textarea), multiline, font scaling on resize
-- 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip
+- 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip, ✂️ **cropping** — double-click to enter, drag handles to trim and drag inside to slide the image, Enter applies / Esc cancels (non-destructive: the source is kept)
 
 **Editing**
 - 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)
@@ -215,7 +215,11 @@ tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
 
-`Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'text' | 'eraser' | 'pan'`
+`Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan'`
+
+`'arrow-both'` is marked `variantOf: 'arrow'` in `TOOL_METAS` — a hint to toolbars to nest it
+under the arrow button as a sub-menu (right-click / long-press). The demo is the reference
+implementation of that pattern.
 
 ### Methods
 
@@ -232,6 +236,9 @@ tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | lock |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |
 | `addImage(src)` / `addImageFromFile(file)` | images |
+| `startCrop()` / `applyCrop()` / `cancelCrop()` | interactive image crop (also: double-click an image) |
+| `canCrop()` / `isCropping()` / `getCroppingId()` | crop state |
+| `setImageCrop(id, crop \| null)` | programmatic crop — `crop` is `{x, y, w, h}` in 0..1 fractions of the source |
 | `undo()` / `redo()` / `getHistoryState()` | history |
 | `replay(opts?)` / `getTimeline()` / `isReplaying()` | drawing replay |
 | `zoomIn()` / `zoomOut()` / `setZoom(s, anchor?)` / `zoomToFit()` / `resetView()` | viewport |
@@ -240,13 +247,17 @@ tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
 
 ### Events — `app.on(event, fn)`
 
-`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'replay'` (boolean)
+`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'crop'` (id | null) · `'replay'` (boolean)
 
 ### Keyboard
 
-`V` select · `P` pen · `R` rect · `O` ellipse · `D` diamond · `L` line · `A` arrow · `T` text · `E` eraser · `H` pan · `Space` temp-pan ·
+`V` select · `P` pen · `R` rect · `O` ellipse · `D` diamond · `L` line · `A` arrow (again = both heads) · `T` text · `E` eraser · `H` pan · `Space` temp-pan ·
 `Del` delete · `Ctrl+Z / Ctrl+Shift+Z` undo/redo · `Ctrl+G / Ctrl+Shift+G` group/ungroup ·
-`Ctrl+C / X / V` copy/cut/paste · `Ctrl+D` duplicate · `Ctrl+A` select all · `Esc` deselect · `←↑→↓` nudge (Shift = 10px)
+`Ctrl+C / X / V` copy/cut/paste · `Ctrl+D` duplicate · `Ctrl+A` select all · `Esc` deselect · `←↑→↓` nudge (Shift = 10px) ·
+while cropping: `Enter` apply / `Esc` cancel
+
+The complete map is exported as **`SHORTCUT_SECTIONS`** from `dohwa/ui` — sections, labels and
+key chips as data, ready to render a shortcuts help screen (the demo's `?` popup is built from it).
 
 ## Replay — the signature feature
 
@@ -291,7 +302,7 @@ npm i
 npm run typecheck   # tsc --noEmit
 npm run build       # tsc -> ESM + .d.ts, then the IIFE bundle
 npm run demo        # demo/index.html (single file, bundle inlined)
-npm test            # 99 assertions across matrix, geometry, spatial, cache, ui
+npm test            # 125 assertions across matrix, geometry, spatial, cache, ui
 ```
 
 ## Roadmap

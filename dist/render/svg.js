@@ -47,14 +47,18 @@ function pathD(node) {
 }
 function lineSVG(node) {
     const attr = rotationAttr(node);
-    if (!node.arrow) {
+    if (!node.arrow && !node.arrowStart) {
         return `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}${attr}/>`;
     }
     const size = Math.max(10, node.style.strokeWidth * 3.2);
-    const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
+    const head = (fromX, fromY, atX, atY) => {
+        const [a, b] = arrowHead(fromX, fromY, atX, atY, size);
+        return `<polyline points="${fmt(a.x)},${fmt(a.y)} ${fmt(atX)},${fmt(atY)} ${fmt(b.x)},${fmt(b.y)}" ${styleAttrs(node)}/>`;
+    };
     const line = `<line x1="${fmt(node.x1)}" y1="${fmt(node.y1)}" x2="${fmt(node.x2)}" y2="${fmt(node.y2)}" ${styleAttrs(node)}/>`;
-    const head = `<polyline points="${fmt(a.x)},${fmt(a.y)} ${fmt(node.x2)},${fmt(node.y2)} ${fmt(b.x)},${fmt(b.y)}" ${styleAttrs(node)}/>`;
-    return `<g${attr}>${line}${head}</g>`;
+    const heads = (node.arrow ? head(node.x1, node.y1, node.x2, node.y2) : '') +
+        (node.arrowStart ? head(node.x2, node.y2, node.x1, node.y1) : '');
+    return `<g${attr}>${line}${heads}</g>`;
 }
 function polygonSVG(node, pts) {
     const points = pts.map((p) => `${fmt(p.x)},${fmt(p.y)}`).join(' ');
@@ -92,7 +96,26 @@ export function nodeToSVG(node) {
                 ? ` transform="translate(${fmt(node.x + node.w / 2)} ${fmt(node.y + node.h / 2)}) scale(${sx} ${sy}) translate(${fmt(-(node.x + node.w / 2))} ${fmt(-(node.y + node.h / 2))})"`
                 : '';
             const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
-            const inner = `<image x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}" href="${escapeXML(node.src)}" preserveAspectRatio="none"${op}${flip}/>`;
+            let inner;
+            if (node.crop) {
+                // Draw the full image scaled so the crop window fills the node rect,
+                // clipped to the node rect. Sizes derive from fractions alone —
+                // no natural pixel size needed.
+                const c = node.crop;
+                const fw = node.w / c.w;
+                const fh = node.h / c.h;
+                const fx = node.x - c.x * fw;
+                const fy = node.y - c.y * fh;
+                const clipId = `dohwa-crop-${node.id}`;
+                inner =
+                    `<g${op}${flip}>` +
+                        `<clipPath id="${clipId}"><rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"/></clipPath>` +
+                        `<image x="${fmt(fx)}" y="${fmt(fy)}" width="${fmt(fw)}" height="${fmt(fh)}" href="${escapeXML(node.src)}" preserveAspectRatio="none" clip-path="url(#${clipId})"/>` +
+                        `</g>`;
+            }
+            else {
+                inner = `<image x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}" href="${escapeXML(node.src)}" preserveAspectRatio="none"${op}${flip}/>`;
+            }
             const rot = rotationAttr(node);
             return rot ? `<g${rot}>${inner}</g>` : inner;
         }

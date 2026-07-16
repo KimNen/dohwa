@@ -127,7 +127,53 @@
     opacity: 0.55;
     font-weight: 600;
   }
+  /* corner mark: this button has variants (right-click / long-press) */
+  .tool-btn.has-variants::after {
+    content: '';
+    position: absolute;
+    right: 3px; top: 3px;
+    border: 3px solid transparent;
+    border-right-color: currentColor;
+    border-top-color: currentColor;
+    opacity: 0.45;
+    border-radius: 1px;
+  }
   .divider { height: 1px; background: var(--line); margin: 3px 6px; }
+
+  /* sub-toolbar flyout (variants) */
+  #flyout {
+    position: fixed;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+  }
+  #flyout.open { display: flex; }
+  .flyout-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .flyout-item:hover { background: var(--paper-deep); }
+  .flyout-item.active { background: var(--ink); color: var(--paper); }
+  .flyout-item svg { width: 17px; height: 17px; flex: none; }
+  .flyout-item .kbd {
+    margin-left: auto;
+    font-size: 10px;
+    opacity: 0.55;
+    font-weight: 600;
+  }
 
   /* style panel (right) */
   #stylebar {
@@ -224,22 +270,87 @@
   }
   #zoom-label:hover { background: var(--paper-deep); }
 
-  /* hint (bottom left) */
-  #hint {
+  /* shortcuts modal */
+  #shortcut-overlay {
     position: fixed;
-    bottom: 18px;
-    left: 18px;
-    z-index: 20;
+    inset: 0;
+    z-index: 60;
+    display: none;
+    background: rgba(34, 29, 24, 0.35);
+    backdrop-filter: blur(2px);
+  }
+  #shortcut-overlay.open { display: block; }
+  #shortcut-modal {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 61;
+    width: min(720px, calc(100vw - 40px));
+    max-height: min(78vh, 660px);
+    overflow: auto;
+    padding: 22px 26px 26px;
+  }
+  #shortcut-modal h2 {
+    font-family: 'Gowun Batang', serif;
+    font-size: 19px;
+    margin-bottom: 4px;
+  }
+  #shortcut-modal .modal-sub {
     font-size: 11px;
     color: var(--ink-soft);
-    background: rgba(251, 246, 234, 0.85);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 8px 12px;
-    line-height: 1.7;
-    backdrop-filter: blur(4px);
+    margin-bottom: 16px;
   }
-  #hint b { color: var(--ink); font-weight: 600; }
+  #shortcut-modal .close-x {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 30px; height: 30px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--ink-soft);
+  }
+  #shortcut-modal .close-x:hover { background: var(--paper-deep); color: var(--ink); }
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 8px 28px;
+    align-items: start;
+  }
+  .shortcut-section { break-inside: avoid; }
+  .shortcut-section h3 {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--vermillion);
+    margin: 14px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    font-size: 12.5px;
+  }
+  .shortcut-row .keys { display: flex; gap: 3px; align-items: center; flex: none; }
+  .shortcut-row .keys .plus { font-size: 10px; color: var(--ink-soft); }
+  kbd {
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--paper-deep);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 2px 6px 1px;
+    white-space: nowrap;
+  }
 
   /* toast */
   #toast {
@@ -261,7 +372,6 @@
 
   @media (max-width: 860px) {
     #stylebar { display: none; }
-    #hint { display: none; }
     header .sub { display: none; }
   }
 </style>
@@ -272,7 +382,7 @@
   <header>
     <div class="seal">畵</div>
     <h1>dohwa</h1>
-    <span class="sub">도화 · a canvas drawing engine — v0.2.0</span>
+    <span class="sub">도화 · a canvas drawing engine — v__DOHWA_VERSION__</span>
   </header>
 
   <!-- tools -->
@@ -322,16 +432,23 @@
 
   <!-- zoom -->
   <div id="zoombar" class="panel">
+    <button class="act-btn" id="btn-shortcuts" title="단축키 (?)">⌨</button>
+    <div class="vdiv"></div>
     <button class="act-btn" id="btn-zoom-out" title="축소">−</button>
     <div id="zoom-label" title="클릭하면 화면에 맞춤">100%</div>
     <button class="act-btn" id="btn-zoom-in" title="확대">＋</button>
   </div>
 
-  <div id="hint">
-    <b>P</b> 붓 · <b>T</b> 텍스트(더블클릭 수정) · <b>E</b> 지우개 · <b>A</b> 화살표<br/>
-    <b>V</b> 선택 → 드래그 이동 · 모서리 크기 · 위 손잡이 <b>회전</b><br/>
-    <b>Shift</b> 비율/15°/45° 스냅 · <b>Ctrl+C/V</b> 복사 · 방향키 미세이동<br/>
-    <b>Ctrl+G</b> 그룹 · <b>Space</b> 팬 · 휠 줌 · 이미지 드래그&드롭
+  <!-- variant sub-toolbar (right-click / long-press on a tool) -->
+  <div id="flyout" class="panel"></div>
+
+  <!-- shortcuts modal -->
+  <div id="shortcut-overlay"></div>
+  <div id="shortcut-modal" class="panel" hidden>
+    <button class="close-x" id="btn-shortcuts-close" title="닫기 (Esc)">✕</button>
+    <h2>단축키</h2>
+    <div class="modal-sub">macOS에서는 Ctrl 대신 ⌘를 사용할 수 있습니다 · <kbd>?</kbd> 키로 언제든 열 수 있어요</div>
+    <div class="shortcut-grid" id="shortcut-grid"><!-- built from SHORTCUT_SECTIONS (dohwa/ui) --></div>
   </div>
 
   <div id="toast"></div>
@@ -346,7 +463,8 @@
   //   presets  : PALETTES / THEMES            (dohwa/presets)
   // 이 데모 자체가 "커스텀 UI"의 레퍼런스 구현입니다.
   const {
-    Dohwa, createStore, TOOL_METAS, ACTION_METAS, toolIconSVG, getActionMeta,
+    Dohwa, createStore, TOOL_METAS, ACTION_METAS, SHORTCUT_SECTIONS,
+    toolIconSVG, getActionMeta, getToolVariants,
     PALETTES, THEMES, applyTheme, STROKE_WIDTHS,
   } = window.Dohwa;
 
@@ -372,10 +490,10 @@
   const LABELS_KO = {
     select: '선택', pen: '붓', eraser: '지우개', text: '텍스트',
     rect: '사각형', ellipse: '타원', diamond: '마름모', triangle: '삼각형',
-    line: '직선', arrow: '화살표', pan: '화면 이동',
+    line: '직선', arrow: '화살표', arrowBoth: '양방향 화살표', pan: '화면 이동',
     undo: '실행 취소', redo: '다시 실행', group: '그룹', ungroup: '그룹 해제',
     bringToFront: '맨 앞으로', sendToBack: '맨 뒤로', flipH: '좌우 반전',
-    flipV: '상하 반전', lock: '잠금', delete: '삭제', replay: '리플레이',
+    flipV: '상하 반전', crop: '자르기', lock: '잠금', delete: '삭제', replay: '리플레이',
   };
   const t = (key, fallback) => LABELS_KO[key] || fallback;
 
@@ -389,12 +507,68 @@
   }
 
   // ── 툴바: TOOL_METAS로 생성 ────────────────────────────────────────────
+  //    variantOf가 있는 툴은 부모 버튼의 서브툴바(우클릭/길게 누르기)로 들어간다
   const toolbar = document.getElementById('toolbar');
   const imageBtn = document.getElementById('btn-image');
-  const toolBtns = new Map();
-  let lastGroup = null;
+  const toolBtns = new Map();          // 부모 tool -> button
+  const chosenVariant = new Map();     // 부모 tool -> 마지막으로 고른 변형
+  const VARIANT_PARENT = new Map(      // 변형 tool -> 부모 tool
+    TOOL_METAS.filter((m) => m.variantOf).map((m) => [m.tool, m.variantOf]),
+  );
+  const flyout = document.getElementById('flyout');
+  let flyoutFor = null;
 
+  function toolTitle(meta) {
+    return meta.shortcut
+      ? `${t(meta.key, meta.label)} (${meta.shortcut.toUpperCase()})`
+      : t(meta.key, meta.label);
+  }
+
+  function setToolButtonFace(parentMeta, currentMeta) {
+    const btn = toolBtns.get(parentMeta.tool);
+    btn.title = toolTitle(currentMeta) + ' — 우클릭: 다른 모양';
+    btn.innerHTML =
+      toolIconSVG(currentMeta.tool, 19) +
+      (parentMeta.shortcut ? `<span class="kbd">${parentMeta.shortcut.toUpperCase()}</span>` : '');
+  }
+
+  function closeFlyout() {
+    flyout.classList.remove('open');
+    flyoutFor = null;
+  }
+
+  function openFlyout(parentMeta, variants, anchorBtn) {
+    flyout.innerHTML = '';
+    const current = chosenVariant.get(parentMeta.tool) || parentMeta.tool;
+    for (const m of [parentMeta, ...variants]) {
+      const item = document.createElement('button');
+      item.className = 'flyout-item' + (m.tool === current ? ' active' : '');
+      item.innerHTML =
+        toolIconSVG(m.tool, 17) +
+        `<span>${t(m.key, m.label)}</span>` +
+        (m.shortcut ? `<span class="kbd">${m.shortcut.toUpperCase()}</span>` : '');
+      item.addEventListener('click', () => {
+        chosenVariant.set(parentMeta.tool, m.tool);
+        setToolButtonFace(parentMeta, m);
+        app.setTool(m.tool);
+        closeFlyout();
+      });
+      flyout.appendChild(item);
+    }
+    const r = anchorBtn.getBoundingClientRect();
+    flyout.style.left = `${r.right + 8}px`;
+    flyout.style.top = `${r.top - 4}px`;
+    flyout.classList.add('open');
+    flyoutFor = parentMeta.tool;
+  }
+
+  window.addEventListener('pointerdown', (e) => {
+    if (flyoutFor && !flyout.contains(e.target)) closeFlyout();
+  }, true);
+
+  let lastGroup = null;
   for (const meta of TOOL_METAS) {
+    if (meta.variantOf) continue; // 부모 버튼의 서브툴바로만 노출
     if (lastGroup && meta.group !== lastGroup) {
       const div = document.createElement('div');
       div.className = 'divider';
@@ -404,15 +578,32 @@
 
     const btn = document.createElement('button');
     btn.className = 'tool-btn';
-    btn.title = meta.shortcut
-      ? `${t(meta.key, meta.label)} (${meta.shortcut.toUpperCase()})`
-      : t(meta.key, meta.label);
+    btn.title = toolTitle(meta);
     btn.innerHTML =
       toolIconSVG(meta.tool, 19) +
       (meta.shortcut ? `<span class="kbd">${meta.shortcut.toUpperCase()}</span>` : '');
-    btn.addEventListener('click', () => app.setTool(meta.tool));
+    btn.addEventListener('click', () => {
+      app.setTool(chosenVariant.get(meta.tool) || meta.tool);
+    });
     toolbar.insertBefore(btn, imageBtn);
     toolBtns.set(meta.tool, btn);
+
+    const variants = getToolVariants(meta.tool);
+    if (variants.length > 0) {
+      btn.classList.add('has-variants');
+      btn.title += ' — 우클릭: 다른 모양';
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openFlyout(meta, variants, btn);
+      });
+      let pressTimer = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        pressTimer = setTimeout(() => openFlyout(meta, variants, btn), 450);
+      });
+      btn.addEventListener('pointerup', () => clearTimeout(pressTimer));
+      btn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
+    }
   }
   imageBtn.innerHTML =
     '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-4.5-4.5L7 21"/></svg>';
@@ -420,9 +611,9 @@
   // ── 액션바: ACTION_METAS로 생성 ───────────────────────────────────────
   const TOOLBAR_ACTIONS = [
     'undo', 'redo', '|',
-    'group', 'ungroup', 'bringToFront', 'sendToBack', 'flipH', 'flipV', 'lock', 'delete',
+    'group', 'ungroup', 'bringToFront', 'sendToBack', 'flipH', 'flipV', 'crop', 'lock', 'delete',
   ];
-  const ICON_ONLY = new Set(['undo', 'redo', 'lock', 'delete']);
+  const ICON_ONLY = new Set(['undo', 'redo', 'crop', 'lock', 'delete']);
   const TEXT_LABEL = {
     group: '그룹', ungroup: '해제', bringToFront: '↑앞', sendToBack: '↓뒤',
     flipH: '⇋', flipV: '⇵',
@@ -471,6 +662,90 @@
     if (!store.canRun('replay')) { toast('먼저 무언가 그려보세요'); return; }
     app.replay({ fps: 6 });
   });
+
+  // 이미지 더블클릭 또는 ✂ 버튼으로 크롭 모드 진입
+  app.on('crop', (id) => {
+    if (id) toast('모서리를 끌어 자르고, 안쪽을 끌어 이미지 이동 — Enter 적용 · Esc 취소');
+  });
+
+  // ── 단축키 모달: SHORTCUT_SECTIONS(dohwa/ui)로 생성 ───────────────────
+  const SECTION_KO = {
+    tools: '도구', edit: '편집', draw: '그리기 · 변형 중',
+    textImage: '텍스트 · 이미지', view: '화면',
+  };
+  const SHORTCUT_KO = {
+    select: '선택', pen: '붓', eraser: '지우개', text: '텍스트', rect: '사각형',
+    ellipse: '타원', diamond: '마름모', line: '직선', arrow: '화살표', pan: '화면 이동',
+    arrowBoth: '양방향 화살표 (화살표에서 한 번 더)', panTemp: '팬 (누르는 동안)',
+    undo: '실행 취소', redo: '다시 실행', copy: '복사', cut: '잘라내기', paste: '붙여넣기',
+    duplicate: '복제', delete: '삭제', selectAll: '전체 선택', deselect: '선택 해제',
+    group: '그룹', ungroup: '그룹 해제', nudge: '1px 이동', nudge10: '10px 이동',
+    snapSquare: '정사각형 / 정원 (도형)', snapAngle: '45° 스냅 (직선·화살표)',
+    snapRatio: '비율 유지 (크기 조절)', snapRotate: '15° 스냅 (회전)',
+    textEdit: '텍스트 수정', textDone: '수정 완료', cropStart: '이미지 자르기',
+    cropApply: '자르기 적용', cropCancel: '자르기 취소',
+    zoomWheel: '줌 (커서 기준)', zoomFine: '미세 줌 / 핀치', panSpace: '팬',
+  };
+  const KEY_KO = { 'Double-click': '더블클릭', drag: '드래그', Wheel: '휠' };
+
+  const shortcutGrid = document.getElementById('shortcut-grid');
+  for (const section of SHORTCUT_SECTIONS) {
+    const wrap = document.createElement('div');
+    wrap.className = 'shortcut-section';
+    const h = document.createElement('h3');
+    h.textContent = SECTION_KO[section.key] || section.label;
+    wrap.appendChild(h);
+    for (const item of section.items) {
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+      const label = document.createElement('span');
+      label.textContent = SHORTCUT_KO[item.key] || item.label;
+      const keys = document.createElement('span');
+      keys.className = 'keys';
+      item.keys.forEach((k, i) => {
+        if (i > 0) {
+          const plus = document.createElement('span');
+          plus.className = 'plus';
+          plus.textContent = '+';
+          keys.appendChild(plus);
+        }
+        const kbd = document.createElement('kbd');
+        kbd.textContent = KEY_KO[k] || k;
+        keys.appendChild(kbd);
+      });
+      row.appendChild(label);
+      row.appendChild(keys);
+      wrap.appendChild(row);
+    }
+    shortcutGrid.appendChild(wrap);
+  }
+
+  const shortcutModal = document.getElementById('shortcut-modal');
+  const shortcutOverlay = document.getElementById('shortcut-overlay');
+  function shortcutsOpen() { return !shortcutModal.hidden; }
+  function toggleShortcuts(open) {
+    const next = open ?? !shortcutsOpen();
+    shortcutModal.hidden = !next;
+    shortcutOverlay.classList.toggle('open', next);
+  }
+  document.getElementById('btn-shortcuts').addEventListener('click', () => toggleShortcuts());
+  document.getElementById('btn-shortcuts-close').addEventListener('click', () => toggleShortcuts(false));
+  shortcutOverlay.addEventListener('pointerdown', () => toggleShortcuts(false));
+  // 캡처 단계에서 처리해 모달이 열린 동안 엔진 단축키(Esc 등)를 가로챈다
+  window.addEventListener('keydown', (e) => {
+    const t = e.target;
+    const editable = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (e.key === '?' && !editable) {
+      e.preventDefault();
+      toggleShortcuts();
+      e.stopPropagation();
+    } else if (e.key === 'Escape' && shortcutsOpen()) {
+      toggleShortcuts(false);
+      e.stopPropagation();
+    } else if (shortcutsOpen() && !editable) {
+      e.stopPropagation(); // 모달이 열린 동안 캔버스 단축키 정지
+    }
+  }, true);
 
   // ── 팔레트 UI ─────────────────────────────────────────────────────────
   const paletteSelect = document.getElementById('palette-select');
@@ -528,7 +803,16 @@
   function renderUI() {
     const s = store.getSnapshot();
 
-    toolBtns.forEach((btn, tool) => btn.classList.toggle('active', s.tool === tool));
+    // 변형 툴이 켜지면 부모 버튼이 그 아이콘으로 켜진다
+    const parentTool = VARIANT_PARENT.get(s.tool);
+    if (parentTool && chosenVariant.get(parentTool) !== s.tool) {
+      chosenVariant.set(parentTool, s.tool);
+      const parentMeta = TOOL_METAS.find((m) => m.tool === parentTool);
+      const currentMeta = TOOL_METAS.find((m) => m.tool === s.tool);
+      setToolButtonFace(parentMeta, currentMeta);
+    }
+    toolBtns.forEach((btn, tool) =>
+      btn.classList.toggle('active', s.tool === tool || VARIANT_PARENT.get(s.tool) === tool));
     actionBtns.forEach((btn, key) => {
       btn.disabled = key === 'lock' ? s.isReplaying : !store.canRun(key);
     });

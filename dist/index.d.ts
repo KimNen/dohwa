@@ -1,5 +1,5 @@
 export { Dohwa } from './core/dohwa.js';
-export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, } from './geometry/geometry.js';
+export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, cropFullRect, cropFromRects, } from './geometry/geometry.js';
 export { IDENTITY, multiply, composeAll, compose, translation, scaling, rotation, skewing, applyToPoint, invert, determinant, isIdentity, decompose, toCSS, transformBBox, } from './geometry/matrix.js';
 export type { Matrix, TransformParts, DecomposedTransform } from './geometry/matrix.js';
 export { Quadtree } from './geometry/spatial.js';

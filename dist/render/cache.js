@@ -50,6 +50,11 @@ export function cacheKey(node) {
         }
         case 'group':
             return `group:${node.children.map(cacheKey).join('/')}:${base}`;
+        case 'image': {
+            const c = node.crop;
+            const crop = c ? `${c.x},${c.y},${c.w},${c.h}` : '';
+            return `image:${node.flipX ? 1 : 0}${node.flipY ? 1 : 0}:${crop}:${base}`;
+        }
         default:
             return `${node.type}:${base}`;
     }

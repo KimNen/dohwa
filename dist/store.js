@@ -17,6 +17,8 @@ export class DohwaStore {
             const s = this.state;
             if (s.isReplaying)
                 return false;
+            if (key === 'crop')
+                return s.canCrop;
             if (meta.needsMultiSelection)
                 return s.selectionCount >= 2;
             if (meta.needsSelection)
@@ -56,6 +58,9 @@ export class DohwaStore {
                     break;
                 case 'flipV':
                     app.flipSelection('v');
+                    break;
+                case 'crop':
+                    app.startCrop();
                     break;
                 case 'lock':
                     app.lockSelection();
@@ -112,6 +117,7 @@ export class DohwaStore {
             'viewport',
             'change',
             'textedit',
+            'crop',
             'replay',
         ]) {
             this.offs.push(app.on(event, refresh));
@@ -140,6 +146,8 @@ export class DohwaStore {
             isReplaying: app.isReplaying(),
             hasLockedNodes: app.hasLockedNodes(),
             canReplay: app.getTimeline().length >= 2,
+            isCropping: app.isCropping(),
+            canCrop: app.canCrop(),
         };
     }
 }
@@ -156,6 +164,8 @@ function shallowEqual(a, b) {
         a.isReplaying === b.isReplaying &&
         a.hasLockedNodes === b.hasLockedNodes &&
         a.canReplay === b.canReplay &&
+        a.isCropping === b.isCropping &&
+        a.canCrop === b.canCrop &&
         a.style.stroke === b.style.stroke &&
         a.style.fill === b.style.fill &&
         a.style.strokeWidth === b.style.strokeWidth &&

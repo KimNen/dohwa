@@ -23,6 +23,10 @@ export interface DohwaUIState {
   hasLockedNodes: boolean;
   /** true if a replay is possible (2+ timeline frames) */
   canReplay: boolean;
+  /** true while the interactive image-crop editor is open */
+  isCropping: boolean;
+  /** true when exactly one unlocked image is selected */
+  canCrop: boolean;
 }
 
 export type Unsubscribe = () => void;
@@ -53,6 +57,7 @@ export class DohwaStore {
       'viewport',
       'change',
       'textedit',
+      'crop',
       'replay',
     ] as const) {
       this.offs.push(app.on(event, refresh));
@@ -73,6 +78,7 @@ export class DohwaStore {
     if (!meta) return false;
     const s = this.state;
     if (s.isReplaying) return false;
+    if (key === 'crop') return s.canCrop;
     if (meta.needsMultiSelection) return s.selectionCount >= 2;
     if (meta.needsSelection) return s.selectionCount >= 1;
     if (key === 'undo') return s.canUndo;
@@ -93,6 +99,7 @@ export class DohwaStore {
       case 'sendToBack': app.sendToBack(); break;
       case 'flipH': app.flipSelection('h'); break;
       case 'flipV': app.flipSelection('v'); break;
+      case 'crop': app.startCrop(); break;
       case 'lock': app.lockSelection(); break;
       case 'duplicate': app.duplicateSelection(); break;
       case 'copy': app.copySelection(); break;
@@ -132,6 +139,8 @@ export class DohwaStore {
       isReplaying: app.isReplaying(),
       hasLockedNodes: app.hasLockedNodes(),
       canReplay: app.getTimeline().length >= 2,
+      isCropping: app.isCropping(),
+      canCrop: app.canCrop(),
     };
   }
 }
@@ -150,6 +159,8 @@ function shallowEqual(a: DohwaUIState, b: DohwaUIState): boolean {
     a.isReplaying === b.isReplaying &&
     a.hasLockedNodes === b.hasLockedNodes &&
     a.canReplay === b.canReplay &&
+    a.isCropping === b.isCropping &&
+    a.canCrop === b.canCrop &&
     a.style.stroke === b.style.stroke &&
     a.style.fill === b.style.fill &&
     a.style.strokeWidth === b.style.strokeWidth &&

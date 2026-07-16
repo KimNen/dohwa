@@ -86,3 +86,49 @@ ok('svg covers every node type',
 ok('svg escapes XML', svg.includes('안녕&lt;&amp;&gt;&quot;'));
 ok('svg emits transform matrix', svg.includes('matrix('));
 ok('svg well-formed', svg.startsWith('<svg') && svg.endsWith('</svg>'));
+
+// ---------------------------------------------------------------- image crop
+const { cropFullRect, cropFromRects } = await import('../dist/index.js');
+
+const box = { x: 100, y: 100, w: 50, h: 25 };
+ok('no crop -> full == box', JSON.stringify(cropFullRect(box, undefined)) === JSON.stringify(box));
+
+const crop = { x: 0.25, y: 0.5, w: 0.5, h: 0.5 };
+const full = cropFullRect(box, crop);
+ok('full rect scales up by 1/crop', full.w === 100 && full.h === 50);
+ok('full rect offsets by crop origin', full.x === 75 && full.y === 75);
+const roundTrip = cropFromRects(box, full);
+ok('crop <-> rects round-trips',
+  Math.abs(roundTrip.x - crop.x) < 1e-9 && Math.abs(roundTrip.y - crop.y) < 1e-9 &&
+  Math.abs(roundTrip.w - crop.w) < 1e-9 && Math.abs(roundTrip.h - crop.h) < 1e-9);
+
+// flipped: the visual position of the uncropped remainder mirrors
+const asym = { x: 0.1, y: 0.2, w: 0.5, h: 0.5 };
+ok('flipX mirrors full rect', cropFullRect(box, asym, true, false).x === 100 - 0.4 * 100);
+ok('unflipped full rect differs', cropFullRect(box, asym, false, false).x === 100 - 0.1 * 100);
+const rtFlip = cropFromRects(box, cropFullRect(box, asym, true, false), true, false);
+ok('flipX crop round-trips',
+  Math.abs(rtFlip.x - asym.x) < 1e-9 && Math.abs(rtFlip.w - asym.w) < 1e-9);
+const rtFlipY = cropFromRects(box, cropFullRect(box, asym, false, true), false, true);
+ok('flipY crop round-trips',
+  Math.abs(rtFlipY.y - asym.y) < 1e-9 && Math.abs(rtFlipY.h - asym.h) < 1e-9);
+
+// cropped image -> SVG uses a clipPath + scaled full image
+const croppedImg = {
+  id: 'ci', type: 'image', x: 0, y: 0, w: 40, h: 40,
+  src: 'data:image/png;base64,xx', crop: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 },
+  style: { ...style },
+};
+const cropSVG = sceneToSVG([croppedImg]);
+ok('crop svg has clipPath', cropSVG.includes('<clipPath id="dohwa-crop-ci"'));
+ok('crop svg scales image to full size', cropSVG.includes('width="80"') && cropSVG.includes('height="80"'));
+ok('crop svg offsets image by window', cropSVG.includes('x="-20"') && cropSVG.includes('y="-20"'));
+
+// ---------------------------------------------------------------- double arrow
+const both = { id: 'db', type: 'line', x1: 0, y1: 0, x2: 100, y2: 0, arrow: true, arrowStart: true, style: { ...style } };
+const bothSVG = sceneToSVG([both]);
+ok('double arrow renders two heads', (bothSVG.match(/<polyline/g) || []).length === 2);
+const single = sceneToSVG([{ ...both, arrowStart: undefined }]);
+ok('single arrow renders one head', (single.match(/<polyline/g) || []).length === 1);
+const startOnly = sceneToSVG([{ ...both, arrow: undefined }]);
+ok('start-only arrow renders one head', (startOnly.match(/<polyline/g) || []).length === 1);

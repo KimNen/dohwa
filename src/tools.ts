@@ -22,6 +22,13 @@ export interface ToolMeta {
   group: 'draw' | 'shape' | 'view';
   /** true if the tool creates nodes (vs. select / pan / eraser) */
   creates: boolean;
+  /**
+   * When set, this tool is a variant of another tool and toolbars should
+   * nest it under that tool's button (e.g. a right-click / long-press
+   * sub-menu) instead of giving it its own top-level slot.
+   * Pressing the parent's shortcut again cycles through its variants.
+   */
+  variantOf?: Tool;
 }
 
 export const ICON_ATTRS = {
@@ -127,6 +134,15 @@ export const TOOL_METAS: readonly ToolMeta[] = [
     icon: ['M5 19L19 5M19 5h-8M19 5v8'],
   },
   {
+    tool: 'arrow-both',
+    key: 'arrowBoth',
+    label: 'Double arrow',
+    group: 'shape',
+    creates: true,
+    variantOf: 'arrow',
+    icon: ['M5 19L19 5M19 5h-8M19 5v8M5 19h8M5 19v-8'],
+  },
+  {
     tool: 'pan',
     key: 'pan',
     label: 'Pan',
@@ -147,6 +163,11 @@ export function getToolMeta(tool: Tool): ToolMeta | undefined {
 
 export function getToolsByGroup(group: ToolMeta['group']): ToolMeta[] {
   return TOOL_METAS.filter((m) => m.group === group);
+}
+
+/** Variants nested under a tool's button (for flyout / sub-toolbar menus). */
+export function getToolVariants(tool: Tool): ToolMeta[] {
+  return TOOL_METAS.filter((m) => m.variantOf === tool);
 }
 
 /** Build a `<path d="...">` string set — handy for innerHTML-based UIs. */
@@ -172,6 +193,7 @@ export type ActionKey =
   | 'sendToBack'
   | 'flipH'
   | 'flipV'
+  | 'crop'
   | 'lock'
   | 'duplicate'
   | 'copy'
@@ -206,6 +228,12 @@ export const ACTION_METAS: readonly ActionMeta[] = [
   { key: 'sendToBack', label: 'Send to back', needsSelection: true },
   { key: 'flipH', label: 'Flip horizontal', needsSelection: true },
   { key: 'flipV', label: 'Flip vertical', needsSelection: true },
+  {
+    key: 'crop',
+    label: 'Crop image',
+    needsSelection: true,
+    icon: ['M6 2v14a2 2 0 0 0 2 2h14', 'M18 22V8a2 2 0 0 0-2-2H2'],
+  },
   { key: 'lock', label: 'Lock', needsSelection: true, icon: ['M5 11h14v9H5z', 'M8 11V7a4 4 0 0 1 8 0v4'] },
   { key: 'duplicate', label: 'Duplicate', shortcut: 'Ctrl+D', needsSelection: true },
   { key: 'copy', label: 'Copy', shortcut: 'Ctrl+C', needsSelection: true },
@@ -231,3 +259,92 @@ const BY_ACTION = new Map<ActionKey, ActionMeta>(ACTION_METAS.map((a) => [a.key,
 export function getActionMeta(key: ActionKey): ActionMeta | undefined {
   return BY_ACTION.get(key);
 }
+
+// ---------------------------------------------------------------- shortcuts
+
+/**
+ * One entry of the keyboard-shortcut reference. `keys` are the chips a help
+ * screen renders (['Ctrl', 'Shift', 'Z'] → Ctrl + Shift + Z); `key` is a
+ * stable identifier for your own i18n dictionary, like ToolMeta.key.
+ * 'Ctrl' means ⌘ on macOS — the engine accepts either.
+ */
+export interface ShortcutItem {
+  key: string;
+  label: string;
+  keys: string[];
+}
+
+export interface ShortcutSection {
+  key: string;
+  label: string;
+  items: ShortcutItem[];
+}
+
+/**
+ * The full keyboard map, grouped for a help / cheat-sheet screen.
+ * Tool rows are derived from TOOL_METAS so the two never drift apart.
+ */
+export const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
+  {
+    key: 'tools',
+    label: 'Tools',
+    items: [
+      ...TOOL_METAS.filter((m) => m.shortcut).map((m) => ({
+        key: m.key,
+        label: m.label,
+        keys: [m.shortcut!.toUpperCase()],
+      })),
+      { key: 'arrowBoth', label: 'Double arrow (press again on Arrow)', keys: ['A', 'A'] },
+      { key: 'panTemp', label: 'Pan (hold)', keys: ['Space'] },
+    ],
+  },
+  {
+    key: 'edit',
+    label: 'Edit',
+    items: [
+      { key: 'undo', label: 'Undo', keys: ['Ctrl', 'Z'] },
+      { key: 'redo', label: 'Redo', keys: ['Ctrl', 'Shift', 'Z'] },
+      { key: 'copy', label: 'Copy', keys: ['Ctrl', 'C'] },
+      { key: 'cut', label: 'Cut', keys: ['Ctrl', 'X'] },
+      { key: 'paste', label: 'Paste', keys: ['Ctrl', 'V'] },
+      { key: 'duplicate', label: 'Duplicate', keys: ['Ctrl', 'D'] },
+      { key: 'delete', label: 'Delete', keys: ['Del'] },
+      { key: 'selectAll', label: 'Select all', keys: ['Ctrl', 'A'] },
+      { key: 'deselect', label: 'Deselect', keys: ['Esc'] },
+      { key: 'group', label: 'Group', keys: ['Ctrl', 'G'] },
+      { key: 'ungroup', label: 'Ungroup', keys: ['Ctrl', 'Shift', 'G'] },
+      { key: 'nudge', label: 'Nudge 1px', keys: ['← ↑ → ↓'] },
+      { key: 'nudge10', label: 'Nudge 10px', keys: ['Shift', '← ↑ → ↓'] },
+    ],
+  },
+  {
+    key: 'draw',
+    label: 'While drawing / transforming',
+    items: [
+      { key: 'snapSquare', label: 'Square / circle (shapes)', keys: ['Shift', 'drag'] },
+      { key: 'snapAngle', label: '45° snap (line / arrow)', keys: ['Shift', 'drag'] },
+      { key: 'snapRatio', label: 'Keep aspect ratio (resize)', keys: ['Shift', 'drag'] },
+      { key: 'snapRotate', label: '15° snap (rotate)', keys: ['Shift', 'drag'] },
+    ],
+  },
+  {
+    key: 'textImage',
+    label: 'Text & image',
+    items: [
+      { key: 'textEdit', label: 'Edit text', keys: ['Double-click'] },
+      { key: 'textDone', label: 'Finish editing', keys: ['Ctrl', 'Enter'] },
+      { key: 'cropStart', label: 'Crop image', keys: ['Double-click'] },
+      { key: 'cropApply', label: 'Apply crop', keys: ['Enter'] },
+      { key: 'cropCancel', label: 'Cancel crop', keys: ['Esc'] },
+    ],
+  },
+  {
+    key: 'view',
+    label: 'View',
+    items: [
+      { key: 'zoomWheel', label: 'Zoom (to cursor)', keys: ['Wheel'] },
+      { key: 'zoomFine', label: 'Fine zoom / pinch', keys: ['Ctrl', 'Wheel'] },
+      { key: 'panSpace', label: 'Pan', keys: ['Space', 'drag'] },
+    ],
+  },
+];

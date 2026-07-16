@@ -1,4 +1,4 @@
-import type { BBox, DohwaNode, Point } from '../types.js';
+import type { BBox, CropRect, DohwaNode, Point } from '../types.js';
 import type { Matrix } from './matrix.js';
 import {
   IDENTITY,
@@ -319,6 +319,41 @@ export function flipNode(node: DohwaNode, axis: 'h' | 'v', center: Point): void 
       for (const child of node.children) flipNode(child, axis, center);
       break;
   }
+}
+
+// ---------------------------------------------------------------- image crop
+
+/**
+ * The rect the FULL (uncropped) image would occupy, given the node's visible
+ * rect `box` and its crop window. This is where the crop editor draws the
+ * ghost image. Flip flags matter because flipping mirrors the rendered
+ * content around the node rect's center, so the on-screen position of the
+ * uncropped remainder mirrors too.
+ */
+export function cropFullRect(box: BBox, crop: CropRect | undefined, flipX = false, flipY = false): BBox {
+  if (!crop) return { ...box };
+  const w = box.w / crop.w;
+  const h = box.h / crop.h;
+  const relX = flipX ? 1 - crop.x - crop.w : crop.x;
+  const relY = flipY ? 1 - crop.y - crop.h : crop.y;
+  return { x: box.x - relX * w, y: box.y - relY * h, w, h };
+}
+
+/**
+ * Inverse of cropFullRect: the crop window (source fractions) that shows
+ * exactly `box` out of an image visually occupying `full`.
+ */
+export function cropFromRects(box: BBox, full: BBox, flipX = false, flipY = false): CropRect {
+  const relX = (box.x - full.x) / full.w;
+  const relY = (box.y - full.y) / full.h;
+  const w = box.w / full.w;
+  const h = box.h / full.h;
+  return {
+    x: flipX ? 1 - relX - w : relX,
+    y: flipY ? 1 - relY - h : relY,
+    w,
+    h,
+  };
 }
 
 // ---------------------------------------------------------------- hit testing

@@ -132,11 +132,17 @@ export function renderNode(ctx, node, images, options = {}) {
             applyStrokeFill(ctx, node, () => {
                 ctx.moveTo(node.x1, node.y1);
                 ctx.lineTo(node.x2, node.y2);
+                const size = Math.max(10, node.style.strokeWidth * 3.2);
                 if (node.arrow) {
-                    const size = Math.max(10, node.style.strokeWidth * 3.2);
                     const [a, b] = arrowHead(node.x1, node.y1, node.x2, node.y2, size);
                     ctx.moveTo(a.x, a.y);
                     ctx.lineTo(node.x2, node.y2);
+                    ctx.lineTo(b.x, b.y);
+                }
+                if (node.arrowStart) {
+                    const [a, b] = arrowHead(node.x2, node.y2, node.x1, node.y1, size);
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(node.x1, node.y1);
                     ctx.lineTo(b.x, b.y);
                 }
             });
@@ -154,7 +160,13 @@ export function renderNode(ctx, node, images, options = {}) {
                     ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
                     ctx.translate(-cx, -cy);
                 }
-                ctx.drawImage(img, node.x, node.y, node.w, node.h);
+                const crop = node.crop;
+                if (crop) {
+                    ctx.drawImage(img, crop.x * img.naturalWidth, crop.y * img.naturalHeight, crop.w * img.naturalWidth, crop.h * img.naturalHeight, node.x, node.y, node.w, node.h);
+                }
+                else {
+                    ctx.drawImage(img, node.x, node.y, node.w, node.h);
+                }
             }
             else {
                 ctx.fillStyle = 'rgba(0,0,0,0.06)';

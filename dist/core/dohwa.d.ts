@@ -1,4 +1,4 @@
-import type { DohwaEvent, DohwaNode, DohwaOptions, ExportPNGOptions, ExportSVGOptions, HistoryState, ImageNode, Point, ReplayOptions, SceneJSON, Style, TextNode, Tool, Viewport } from '../types.js';
+import type { CropRect, DohwaEvent, DohwaNode, DohwaOptions, ExportPNGOptions, ExportSVGOptions, HistoryState, ImageNode, Point, ReplayOptions, SceneJSON, Style, TextNode, Tool, Viewport } from '../types.js';
 export declare class Dohwa {
     readonly container: HTMLElement;
     readonly canvas: HTMLCanvasElement;
@@ -21,6 +21,7 @@ export declare class Dohwa {
     private maxZoom;
     private clipboard;
     private editing;
+    private cropping;
     private replaying;
     private timeline;
     private emitter;
@@ -64,6 +65,24 @@ export declare class Dohwa {
     addImage(src: string): Promise<ImageNode>;
     /** Add an image from a File (e.g. <input type=file> or drag & drop). */
     addImageFromFile(file: File): Promise<ImageNode>;
+    /** True when exactly one unlocked image is selected (crop can start). */
+    canCrop(): boolean;
+    /** True while the interactive crop editor is open. */
+    isCropping(): boolean;
+    /** id of the image being cropped, or null. */
+    getCroppingId(): string | null;
+    /**
+     * Enter interactive crop mode on the selected image (also reachable by
+     * double-clicking an image). Drag the handles to trim, drag inside to
+     * slide the image behind the window; Enter applies, Esc cancels.
+     */
+    startCrop(): boolean;
+    /** Commit the pending crop and leave crop mode. No-op when not cropping. */
+    applyCrop(): void;
+    /** Discard the pending crop, restoring the image as it was. */
+    cancelCrop(): void;
+    /** Set (or clear, with null) an image's crop window programmatically. */
+    setImageCrop(id: string, crop: CropRect | null): boolean;
     undo(): void;
     redo(): void;
     getHistoryState(): HistoryState;
@@ -118,6 +137,15 @@ export declare class Dohwa {
     private selectionFrame;
     /** Screen-space positions of the 8 resize handles + rotation handle. */
     private framePoints;
+    /** Crop editor frame: the image's own rect, rotation-aware. */
+    private cropFrame;
+    /**
+     * While cropping: the full (uncropped) image as a ghost behind the scene,
+     * plus a crisp re-draw of the cropped node on top. Runs in world space.
+     */
+    private renderCropGhost;
+    /** Screen-space crop window border + handles (solid, unlike selection). */
+    private renderCropOverlay;
     private renderOverlay;
     private bindEvents;
     private hitTolerance;
@@ -137,6 +165,8 @@ export declare class Dohwa {
     private handleAt;
     private cloneSelection;
     private onPointerDown;
+    /** Pointer-down routing while the crop editor is open. */
+    private onCropPointerDown;
     private eraseAt;
     private onPointerMove;
     private onPointerUp;

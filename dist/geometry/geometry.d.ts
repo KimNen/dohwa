@@ -1,4 +1,4 @@
-import type { BBox, DohwaNode, Point } from '../types.js';
+import type { BBox, CropRect, DohwaNode, Point } from '../types.js';
 import type { Matrix } from './matrix.js';
 /**
  * The node's effective affine transform, expressed around the WORLD origin
@@ -46,6 +46,19 @@ export declare function translateNode(node: DohwaNode, dx: number, dy: number): 
 export declare function scaleNodeInto(node: DohwaNode, from: BBox, to: BBox): void;
 /** Mirror a node across a vertical (axis='h') or horizontal (axis='v') line. */
 export declare function flipNode(node: DohwaNode, axis: 'h' | 'v', center: Point): void;
+/**
+ * The rect the FULL (uncropped) image would occupy, given the node's visible
+ * rect `box` and its crop window. This is where the crop editor draws the
+ * ghost image. Flip flags matter because flipping mirrors the rendered
+ * content around the node rect's center, so the on-screen position of the
+ * uncropped remainder mirrors too.
+ */
+export declare function cropFullRect(box: BBox, crop: CropRect | undefined, flipX?: boolean, flipY?: boolean): BBox;
+/**
+ * Inverse of cropFullRect: the crop window (source fractions) that shows
+ * exactly `box` out of an image visually occupying `full`.
+ */
+export declare function cropFromRects(box: BBox, full: BBox, flipX?: boolean, flipY?: boolean): CropRect;
 export declare function distToSegment(p: Point, a: Point, b: Point): number;
 /**
  * @param tolerance hit slop in world units (scale-aware value should be passed by caller)
