@@ -5,6 +5,7 @@
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { transform } from 'esbuild';
 
 const ENTRY = 'dist/global.js';
 const OUT = 'dist/dohwa.global.js';
@@ -102,13 +103,20 @@ for (const path of order) {
 // Since global.ts does `export * from` each entry, exposing all declared names is correct.
 const exported = [...allNames].sort();
 
-const out = `/* dohwa — IIFE build. window.Dohwa.* */
-var Dohwa = (function () {
+const out = `var Dohwa = (function () {
 ${bodies.join('\n\n')}
 
 return { ${exported.join(', ')} };
 })();
 `;
 
-writeFileSync(OUT, out);
-console.log(`bundled ${order.length} modules -> ${OUT} (${out.length} bytes, ${exported.length} exports)`);
+// Minify — this file is fetched directly by a <script> tag, so bytes here are
+// transfer size, unlike the ESM entries which the consumer's bundler compresses.
+const { code } = await transform(out, { minify: true, target: 'es2020' });
+const banner = '/* dohwa — IIFE build. window.Dohwa.* */\n';
+
+writeFileSync(OUT, banner + code);
+console.log(
+  `bundled ${order.length} modules -> ${OUT} ` +
+    `(${code.length} bytes, was ${out.length}, ${exported.length} exports)`,
+);

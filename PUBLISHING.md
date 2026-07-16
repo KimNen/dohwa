@@ -115,7 +115,29 @@ dohwa is pre-1.0, so the rules are looser, but be consistent:
 - **minor** (`0.4.0 → 0.5.0`) — new features, backward-compatible
 - **major** (`0.4.0 → 1.0.0`) — breaking changes
 
-Let the tooling bump the version, tag git, and keep them in sync:
+### 커밋 프리픽스 → 범프
+
+어떤 범프인지는 커밋 프리픽스로 판단합니다. 한 릴리스에 여러 커밋이 섞여
+있으면 **가장 큰 범프 하나**가 이깁니다 — `Feat:` 5개와 `Break:` 1개가
+쌓였으면 major입니다.
+
+| 커밋 프리픽스   | 범프  | 의미                                  |
+| --------------- | ----- | ------------------------------------- |
+| `Break:`        | major | 기존 사용자의 코드가 깨지는 변경      |
+| `Feat:`         | minor | 새 기능, 하위 호환 유지               |
+| `Patch:` `Fix:` | patch | 버그 수정, 공개 API 변화 없음         |
+| `Refact:`       | patch | 내부 구조 변경, 동작·API 동일         |
+| `Docs:` `Chore:`| 없음  | 문서/빌드/설정 — 단독으로는 릴리스 없음 |
+
+판단 기준은 커밋 프리픽스가 아니라 **소비자에게 무엇이 보이는가**입니다.
+`Refact:`로 시작했더라도 export 이름이 바뀌었다면 그건 `Break:`입니다.
+프리픽스는 그 판단을 기록하는 수단이지, 판단 자체를 대신하지 않습니다.
+
+### 릴리스할 때
+
+버전을 올리기 전에 [CHANGELOG.md](./CHANGELOG.md)의 `Unreleased` 항목을
+새 버전 번호로 옮기세요. 그다음 툴링이 package.json 범프와 git 태그를
+맞춰줍니다:
 
 ```bash
 npm version patch    # bumps package.json + creates a git tag v0.4.1
@@ -210,7 +232,8 @@ npm view dohwa                 # confirm name is free
 # every release
 npm run build && npm test
 npm pack --dry-run             # verify tarball contents
-npm version patch|minor|major  # bump + tag
+# CHANGELOG.md: Unreleased -> the new version number
+npm version patch|minor|major  # bump + tag  (see "커밋 프리픽스 -> 범프")
 npm publish                    # or: pnpm publish
 git push --follow-tags
 ```
