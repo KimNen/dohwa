@@ -497,6 +497,29 @@ export function segmentWidths(points, base) {
  * content around the node rect's center, so the on-screen position of the
  * uncropped remainder mirrors too.
  */
+/**
+ * Where an image's `holes` land inside its own rect, in the node's local
+ * (pre-flip) space — the same space `drawImage` targets. Holes are stored in
+ * source fractions, so they're mapped through the crop window; a hole outside
+ * the visible window simply lands outside `box` and clips away.
+ *
+ * Flips are deliberately NOT applied: renderers flip the whole node rect via
+ * the canvas transform, which carries these rects along, keeping a hole stuck
+ * to the picture content rather than to the frame.
+ */
+export function cropHoleRects(box, crop, holes) {
+    if (!holes || holes.length === 0)
+        return [];
+    const c = crop ?? { x: 0, y: 0, w: 1, h: 1 };
+    if (c.w <= 0 || c.h <= 0)
+        return [];
+    return holes.map((h) => ({
+        x: box.x + ((h.x - c.x) / c.w) * box.w,
+        y: box.y + ((h.y - c.y) / c.h) * box.h,
+        w: (h.w / c.w) * box.w,
+        h: (h.h / c.h) * box.h,
+    }));
+}
 export function cropFullRect(box, crop, flipX = false, flipY = false) {
     if (!crop)
         return { ...box };
@@ -545,6 +568,13 @@ export function hitTestNode(node, point, tolerance) {
         case 'text': {
             const filled = node.type !== 'rect' || node.style.fill !== 'transparent';
             const box = getBBox(node);
+            // a torn-out hole isn't part of the image — clicks fall through it
+            if (node.type === 'image' && node.holes?.length) {
+                const inHole = cropHoleRects(box, node.crop, node.holes)
+                    .some((h) => pointInBBox(p, h, 0));
+                if (inHole)
+                    return false;
+            }
             if (filled)
                 return pointInBBox(p, box, tol);
             return nearPolygonEdge(p, bboxCorners(box), tol);

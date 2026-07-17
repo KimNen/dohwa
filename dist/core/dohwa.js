@@ -578,13 +578,15 @@ export class Dohwa {
         return this.cropping !== null;
     }
     /**
-     * Finish cropping by lifting the crop window out as a NEW image piece and
-     * leaving the source untouched — cut a piece off and drag it away.
+     * Finish cropping by tearing the crop window off as a NEW image piece: the
+     * piece becomes its own node you can drag away, and the window's region is
+     * punched out of the source as a hole.
      *
-     * The piece is the same `src` carrying its own crop window, so nothing is
-     * copied or rasterized: it stays a real image node (vector-clean through
-     * exportSVG) and the original keeps every pixel. Returns the new node, or
-     * null when the crop editor isn't open.
+     * Nothing is rasterized and no pixels are copied or erased — the piece is the
+     * same `src` carrying its own crop window, and the hole is an even-odd clip
+     * over the untouched source. So both stay real image nodes, undoable and
+     * resolution-independent, and both survive `exportSVG` as vector clipPaths.
+     * Returns the new node, or null when the crop editor isn't open.
      */
     extractCrop() {
         if (!this.cropping)
@@ -592,17 +594,21 @@ export class Dohwa {
         const { node, original } = this.cropping;
         const piece = deepClone(node);
         piece.id = genId();
+        // the piece is torn OUT of the source, so it carries no holes of its own
+        delete piece.holes;
         const c = piece.crop;
         // a window covering (almost) everything isn't a crop — the piece is a copy
-        if (c && c.x <= 0.001 && c.y <= 0.001 && c.w >= 0.998 && c.h >= 0.998) {
+        const wholeImage = !c || (c.x <= 0.001 && c.y <= 0.001 && c.w >= 0.998 && c.h >= 0.998);
+        if (wholeImage)
             delete piece.crop;
-        }
         this.cropping = null;
         this.mode = { kind: 'none' };
-        // put the source back: extracting a piece must not alter the original
+        // put the source back, then punch out what the piece took with it
         Object.assign(node, deepClone(original));
         if (original.crop === undefined)
             delete node.crop;
+        if (!wholeImage && c)
+            node.holes = [...(node.holes ?? []), { ...c }];
         this.nodes.push(piece);
         this.selection = new Set([piece.id]);
         this.invalidateIndex();

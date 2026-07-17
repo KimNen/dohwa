@@ -144,6 +144,14 @@ export interface ImageNode extends NodeBase {
   flipY?: boolean;
   /** visible source window; absent = the whole image */
   crop?: CropRect;
+  /**
+   * Source regions punched out of this image — where pieces were torn off.
+   * Same 0..1-of-the-source space as `crop`, so a hole sticks to the picture
+   * content (it flips and scales with it). Rendered as an even-odd clip, so
+   * nothing is erased: the source pixels stay intact and the hole is undoable
+   * and resolution-independent, and survives `exportSVG` as a real clipPath.
+   */
+  holes?: CropRect[];
 }
 
 export interface GroupNode extends NodeBase {

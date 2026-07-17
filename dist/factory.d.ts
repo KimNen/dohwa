@@ -78,6 +78,13 @@ export declare function image(init: BoxInit & {
         w: number;
         h: number;
     };
+    /** source regions punched out (where pieces were torn off), same 0..1 space */
+    holes?: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+    }[];
 }): ImageNode;
 export declare function group(children: DohwaNode[], init?: {
     style?: Partial<Style>;

@@ -29,7 +29,7 @@ and a server route that only builds scenes never touches DOM code.
 - ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow · double-headed arrow** (Shift = square / circle / 45° snap; press `A` again to toggle both heads)
 - 🔤 **Text** — click to create, double-click to edit inline (floating textarea), multiline, font scaling on resize
 - 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip, ✂️ **cropping** — double-click to enter, drag handles to trim and drag inside to slide the image, Enter applies / Esc cancels (non-destructive: the source is kept)
-- 🧩 **Lift out a piece** — `Shift+Enter` lifts the crop window out as a **new image piece** you can drag away, leaving the original untouched. The piece is a real image node sharing the same `src` with its own crop window — no pixels copied (cut several pieces from one photo and collage them)
+- 🧩 **Tear out a piece** — `Shift+Enter` tears the crop window out as a **new image piece** you can drag away, and the spot it came from is really emptied out of the original (middle regions too). It's an even-odd clip rather than erased pixels, so the source stays intact, undoable, and exports as true vector SVG
 
 **Editing**
 - 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)

@@ -76,9 +76,10 @@ export function text(init) {
     };
 }
 export function image(init) {
-    const { x, y, w, h, src, flipX, flipY, crop, style, transform, rotation, locked } = init;
+    const { x, y, w, h, src, flipX, flipY, crop, holes, style, transform, rotation, locked } = init;
     return {
         id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
+        holes: holes ? holes.map((r) => ({ ...r })) : undefined,
         style: withStyle({ stroke: 'transparent', ...style }),
         transform, rotation, locked,
     };

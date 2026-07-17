@@ -1,4 +1,4 @@
-import { diamondPoints, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, } from '../geometry/geometry.js';
+import { cropHoleRects, diamondPoints, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, } from '../geometry/geometry.js';
 import { isIdentity } from '../geometry/matrix.js';
 export const LINE_HEIGHT = 1.3;
 // ---------------------------------------------------------------- text measure
@@ -195,6 +195,16 @@ export function renderNode(ctx, node, images, options = {}) {
                     ctx.translate(cx, cy);
                     ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
                     ctx.translate(-cx, -cy);
+                }
+                // Torn-off pieces leave holes: clip them out with an even-odd path
+                // (node rect + hole rects) so the pixels stay untouched underneath.
+                const holes = cropHoleRects(getBBox(node), node.crop, node.holes);
+                if (holes.length > 0) {
+                    const path = new Path2D();
+                    path.rect(node.x, node.y, node.w, node.h);
+                    for (const h of holes)
+                        path.rect(h.x, h.y, h.w, h.h);
+                    ctx.clip(path, 'evenodd');
                 }
                 const crop = node.crop;
                 if (crop) {

@@ -24,6 +24,7 @@ export {
   hasTransform,
   cropFullRect,
   cropFromRects,
+  cropHoleRects,
   alignDeltas,
   distributeDeltas,
   orderStep,

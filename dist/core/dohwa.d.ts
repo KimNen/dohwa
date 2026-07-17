@@ -113,13 +113,15 @@ export declare class Dohwa {
     /** True while the crop editor is open, so the window can be lifted out. */
     canExtractCrop(): boolean;
     /**
-     * Finish cropping by lifting the crop window out as a NEW image piece and
-     * leaving the source untouched — cut a piece off and drag it away.
+     * Finish cropping by tearing the crop window off as a NEW image piece: the
+     * piece becomes its own node you can drag away, and the window's region is
+     * punched out of the source as a hole.
      *
-     * The piece is the same `src` carrying its own crop window, so nothing is
-     * copied or rasterized: it stays a real image node (vector-clean through
-     * exportSVG) and the original keeps every pixel. Returns the new node, or
-     * null when the crop editor isn't open.
+     * Nothing is rasterized and no pixels are copied or erased — the piece is the
+     * same `src` carrying its own crop window, and the hole is an even-odd clip
+     * over the untouched source. So both stay real image nodes, undoable and
+     * resolution-independent, and both survive `exportSVG` as vector clipPaths.
+     * Returns the new node, or null when the crop editor isn't open.
      */
     extractCrop(): ImageNode | null;
     cancelCrop(): void;

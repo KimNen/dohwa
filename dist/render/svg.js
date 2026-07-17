@@ -1,7 +1,9 @@
-import { diamondPoints, getAABB, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, unionBBox, } from '../geometry/geometry.js';
+import { cropHoleRects, diamondPoints, getAABB, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, unionBBox, } from '../geometry/geometry.js';
 import { isIdentity, toCSS } from '../geometry/matrix.js';
 import { arrowHead, LINE_HEIGHT } from './render.js';
 const fmt = (n) => String(Math.round(n * 100) / 100);
+/** One closed rectangular subpath — several of these make an even-odd clip. */
+const rectPathD = (r) => `M ${fmt(r.x)} ${fmt(r.y)} H ${fmt(r.x + r.w)} V ${fmt(r.y + r.h)} H ${fmt(r.x)} Z`;
 function escapeXML(s) {
     return s
         .replace(/&/g, '&amp;')
@@ -129,19 +131,24 @@ export function nodeToSVG(node) {
                 : '';
             const op = node.style.opacity !== 1 ? ` opacity="${fmt(node.style.opacity)}"` : '';
             let inner;
-            if (node.crop) {
+            const holes = cropHoleRects(getBBox(node), node.crop, node.holes);
+            if (node.crop || holes.length > 0) {
                 // Draw the full image scaled so the crop window fills the node rect,
                 // clipped to the node rect. Sizes derive from fractions alone —
-                // no natural pixel size needed.
+                // no natural pixel size needed. Holes ride in the same clip: one path
+                // whose subpaths are the node rect + each hole, punched out with
+                // clip-rule="evenodd" (separate <rect>s in a clipPath would union,
+                // not subtract).
                 const c = node.crop;
-                const fw = node.w / c.w;
-                const fh = node.h / c.h;
-                const fx = node.x - c.x * fw;
-                const fy = node.y - c.y * fh;
+                const fw = c ? node.w / c.w : node.w;
+                const fh = c ? node.h / c.h : node.h;
+                const fx = c ? node.x - c.x * fw : node.x;
+                const fy = c ? node.y - c.y * fh : node.y;
                 const clipId = `dohwa-crop-${node.id}`;
+                const d = [getBBox(node), ...holes].map(rectPathD).join(' ');
                 inner =
                     `<g${op}${flip}>` +
-                        `<clipPath id="${clipId}"><rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"/></clipPath>` +
+                        `<clipPath id="${clipId}"><path d="${d}" clip-rule="evenodd"/></clipPath>` +
                         `<image x="${fmt(fx)}" y="${fmt(fy)}" width="${fmt(fw)}" height="${fmt(fh)}" href="${escapeXML(node.src)}" preserveAspectRatio="none" clip-path="url(#${clipId})"/>` +
                         `</g>`;
             }

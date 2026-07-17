@@ -1,5 +1,6 @@
 import type { DohwaNode, PathNode, TextNode } from '../types.js';
 import {
+  cropHoleRects,
   diamondPoints,
   getBBox,
   hasPressure,
@@ -250,6 +251,15 @@ export function renderNode(
           ctx.translate(cx, cy);
           ctx.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1);
           ctx.translate(-cx, -cy);
+        }
+        // Torn-off pieces leave holes: clip them out with an even-odd path
+        // (node rect + hole rects) so the pixels stay untouched underneath.
+        const holes = cropHoleRects(getBBox(node), node.crop, node.holes);
+        if (holes.length > 0) {
+          const path = new Path2D();
+          path.rect(node.x, node.y, node.w, node.h);
+          for (const h of holes) path.rect(h.x, h.y, h.w, h.h);
+          ctx.clip(path, 'evenodd');
         }
         const crop = node.crop;
         if (crop) {

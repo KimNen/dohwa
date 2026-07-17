@@ -100,7 +100,46 @@ ok('svg: plain stroke still emits a single path',
   (sceneToSVG([{ ...pressureStroke, points: [{ x:0,y:0 }, { x:10,y:0 }, { x:20,y:0 }] }].map((n) => n)).match(/<path/g) || []).length === 1);
 
 // ---------------------------------------------------------------- image crop
-const { cropFullRect, cropFromRects } = await import('../dist/index.js');
+const { cropFullRect, cropFromRects, cropHoleRects } = await import('../dist/index.js');
+
+// 조각을 떼낸 자리(holes): 원본 소스 비율 -> 노드 공간 사각형
+{
+  const box = { x: 0, y: 0, w: 200, h: 100 };
+  ok('holes: none -> empty', cropHoleRects(box, undefined, undefined).length === 0);
+
+  // crop 없는 이미지: 소스 비율이 그대로 노드 비율
+  const mid = cropHoleRects(box, undefined, [{ x: 0.25, y: 0.25, w: 0.5, h: 0.5 }])[0];
+  ok('holes: maps source fraction into the node rect',
+    mid.x === 50 && mid.y === 25 && mid.w === 100 && mid.h === 50);
+
+  // crop된 이미지: 구멍은 crop 창을 기준으로 다시 매핑된다
+  const cropped = cropHoleRects(box, { x: 0.5, y: 0, w: 0.5, h: 1 }, [{ x: 0.5, y: 0, w: 0.25, h: 1 }])[0];
+  ok('holes: remapped through the crop window',
+    cropped.x === 0 && cropped.w === 100);
+
+  // 창 밖의 구멍은 노드 밖으로 나가 자연히 잘린다
+  const outside = cropHoleRects(box, { x: 0.5, y: 0, w: 0.5, h: 1 }, [{ x: 0, y: 0, w: 0.1, h: 1 }])[0];
+  ok('holes: one outside the window falls outside the rect', outside.x < 0);
+
+  ok('holes: degenerate crop is safe', cropHoleRects(box, { x: 0, y: 0, w: 0, h: 0 }, [{ x: 0, y: 0, w: 1, h: 1 }]).length === 0);
+}
+
+// 구멍 뚫린 이미지: 클릭이 구멍을 통과해야 한다
+{
+  const holed = {
+    id: 'h1', type: 'image', x: 0, y: 0, w: 200, h: 100, src: 'x.png',
+    holes: [{ x: 0.25, y: 0.25, w: 0.5, h: 0.5 }],
+    style: { stroke: 'transparent', fill: 'transparent', strokeWidth: 0, opacity: 1 },
+  };
+  ok('holed image: click falls through the hole', hitTestNode(holed, { x: 100, y: 50 }, 0) === false);
+  ok('holed image: click still hits the remainder', hitTestNode(holed, { x: 10, y: 50 }, 0) === true);
+
+  // SVG: 구멍은 evenodd 클립의 두 번째 서브패스로 나간다 (rect 여러 개면 합집합이 되어버림)
+  const hsvg = sceneToSVG([holed]);
+  ok('holed image: svg uses an even-odd clip', hsvg.includes('clip-rule="evenodd"'));
+  const dm = /<clipPath id="dohwa-crop-h1"><path d="([^"]+)"/.exec(hsvg);
+  ok('holed image: svg clip has outer + hole subpaths', !!dm && dm[1].split('Z').length === 3);
+}
 
 const box = { x: 100, y: 100, w: 50, h: 25 };
 ok('no crop -> full == box', JSON.stringify(cropFullRect(box, undefined)) === JSON.stringify(box));

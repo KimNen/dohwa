@@ -115,6 +115,17 @@ export declare function segmentWidths(points: StrokePoint[], base: number): numb
  * content around the node rect's center, so the on-screen position of the
  * uncropped remainder mirrors too.
  */
+/**
+ * Where an image's `holes` land inside its own rect, in the node's local
+ * (pre-flip) space — the same space `drawImage` targets. Holes are stored in
+ * source fractions, so they're mapped through the crop window; a hole outside
+ * the visible window simply lands outside `box` and clips away.
+ *
+ * Flips are deliberately NOT applied: renderers flip the whole node rect via
+ * the canvas transform, which carries these rects along, keeping a hole stuck
+ * to the picture content rather than to the frame.
+ */
+export declare function cropHoleRects(box: BBox, crop: CropRect | undefined, holes: CropRect[] | undefined): BBox[];
 export declare function cropFullRect(box: BBox, crop: CropRect | undefined, flipX?: boolean, flipY?: boolean): BBox;
 /**
  * Inverse of cropFullRect: the crop window (source fractions) that shows

@@ -135,10 +135,13 @@ export function image(init: BoxInit & {
   src: string; flipX?: boolean; flipY?: boolean;
   /** visible source window, fractions 0..1 of the original image */
   crop?: { x: number; y: number; w: number; h: number };
+  /** source regions punched out (where pieces were torn off), same 0..1 space */
+  holes?: { x: number; y: number; w: number; h: number }[];
 }): ImageNode {
-  const { x, y, w, h, src, flipX, flipY, crop, style, transform, rotation, locked } = init;
+  const { x, y, w, h, src, flipX, flipY, crop, holes, style, transform, rotation, locked } = init;
   return {
     id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
+    holes: holes ? holes.map((r) => ({ ...r })) : undefined,
     style: withStyle({ stroke: 'transparent', ...style }),
     transform, rotation, locked,
   };
