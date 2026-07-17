@@ -184,7 +184,7 @@ export interface ReplayOptions {
     /** snapshots per second (default 5) */
     fps?: number;
 }
-export type DohwaEvent = 'change' | 'selection' | 'tool' | 'history' | 'viewport' | 'textedit' | 'crop' | 'replay';
+export type DohwaEvent = 'change' | 'selection' | 'tool' | 'style' | 'history' | 'viewport' | 'textedit' | 'crop' | 'replay';
 export interface HistoryState {
     canUndo: boolean;
     canRedo: boolean;

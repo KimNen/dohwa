@@ -1,8 +1,13 @@
 import { ACTION_METAS } from './tools.js';
+import { pushRecent, RECENT_COLORS_MAX } from './colors.js';
 export class DohwaStore {
     constructor(app) {
         this.listeners = new Set();
         this.offs = [];
+        this.recentStrokes = [];
+        this.recentFills = [];
+        this.lastStroke = null;
+        this.lastFill = null;
         /** For React: useSyncExternalStore(store.subscribe, store.getSnapshot) */
         this.subscribe = (fn) => {
             this.listeners.add(fn);
@@ -133,8 +138,10 @@ export class DohwaStore {
             }
         };
         this.app = app;
+        this.trackColors(); // seed recents from the starting style
         this.state = this.read();
         const refresh = () => {
+            this.trackColors();
             const next = this.read();
             // shallow-compare so identical snapshots don't re-render
             if (!shallowEqual(next, this.state)) {
@@ -144,6 +151,7 @@ export class DohwaStore {
         };
         for (const event of [
             'tool',
+            'style',
             'selection',
             'history',
             'viewport',
@@ -159,6 +167,35 @@ export class DohwaStore {
         this.offs.forEach((off) => off());
         this.offs = [];
         this.listeners.clear();
+    }
+    /**
+     * Record the current style's colors as "recently used" when they change.
+     * Driven off the engine's own style, so colors picked from a palette, a
+     * native picker, or `setStyle()` in code all land in the same list.
+     */
+    trackColors() {
+        const { stroke, fill } = this.app.getStyle();
+        if (stroke !== this.lastStroke) {
+            this.lastStroke = stroke;
+            this.recentStrokes = pushRecent(this.recentStrokes, stroke, RECENT_COLORS_MAX);
+        }
+        if (fill !== this.lastFill) {
+            this.lastFill = fill;
+            this.recentFills = pushRecent(this.recentFills, fill, RECENT_COLORS_MAX);
+        }
+    }
+    /**
+     * Restore recent colors (e.g. from localStorage on load). Most recent first;
+     * entries are deduped and capped, and 'transparent' is dropped.
+     */
+    setRecentColors(recent) {
+        const rebuild = (list) => (list ?? []).reduceRight((acc, c) => pushRecent(acc, c, RECENT_COLORS_MAX), []);
+        if (recent.strokes)
+            this.recentStrokes = rebuild(recent.strokes);
+        if (recent.fills)
+            this.recentFills = rebuild(recent.fills);
+        this.state = this.read();
+        this.listeners.forEach((fn) => fn());
     }
     read() {
         const app = this.app;
@@ -180,6 +217,8 @@ export class DohwaStore {
             canReplay: app.getTimeline().length >= 2,
             isCropping: app.isCropping(),
             canCrop: app.canCrop(),
+            recentStrokes: [...this.recentStrokes],
+            recentFills: [...this.recentFills],
         };
     }
 }
@@ -198,6 +237,8 @@ function shallowEqual(a, b) {
         a.canReplay === b.canReplay &&
         a.isCropping === b.isCropping &&
         a.canCrop === b.canCrop &&
+        a.recentStrokes.join(',') === b.recentStrokes.join(',') &&
+        a.recentFills.join(',') === b.recentFills.join(',') &&
         a.style.stroke === b.style.stroke &&
         a.style.fill === b.style.fill &&
         a.style.strokeWidth === b.style.strokeWidth &&

@@ -23,3 +23,5 @@ export type {
 
 export { DohwaStore, createStore } from './store.js';
 export type { DohwaUIState, Unsubscribe } from './store.js';
+
+export { RECENT_COLORS_MAX, normalizeColor, isPaint, pushRecent } from './colors.js';

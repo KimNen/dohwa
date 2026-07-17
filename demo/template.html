@@ -209,6 +209,26 @@
       linear-gradient(to top right, transparent 44%, var(--vermillion) 46%, var(--vermillion) 54%, transparent 56%),
       var(--panel);
   }
+  /* 최근 색은 10개까지 — 한 줄에 5개씩 두 줄 */
+  .swatches.recent .swatch { width: 20px; height: 20px; }
+  .picker-row { margin-top: 8px; }
+  .picker {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--muted);
+    cursor: pointer; user-select: none;
+  }
+  .picker:hover { color: var(--ink); }
+  /* 네이티브 색 입력을 동그란 스와치처럼 보이게 */
+  .picker input[type="color"] {
+    width: 24px; height: 24px;
+    padding: 0; border: 2px solid rgba(0,0,0,0.08); border-radius: 50%;
+    background: none; cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .picker input[type="color"]:hover { transform: scale(1.12); }
+  .picker input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .picker input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .picker input[type="color"]::-moz-color-swatch { border: none; border-radius: 50%; }
   input[type="range"] { width: 100%; accent-color: var(--ink); }
   #width-preview { height: 26px; display: flex; align-items: center; justify-content: center; }
   #width-dot { border-radius: 50%; background: var(--ink); transition: width 0.1s, height 0.1s; }
@@ -401,10 +421,26 @@
     <div>
       <div class="label" style="margin-bottom:8px">선 · 글자 STROKE</div>
       <div class="swatches" id="stroke-swatches"></div>
+      <div class="picker-row">
+        <label class="picker" title="색 직접 고르기">
+          <input type="color" id="stroke-picker" value="#221d18" />
+          <span>직접 고르기</span>
+        </label>
+      </div>
     </div>
     <div>
       <div class="label" style="margin-bottom:8px">채움 FILL</div>
       <div class="swatches" id="fill-swatches"></div>
+      <div class="picker-row">
+        <label class="picker" title="색 직접 고르기">
+          <input type="color" id="fill-picker" value="#cccccc" />
+          <span>직접 고르기</span>
+        </label>
+      </div>
+    </div>
+    <div id="recent-block" hidden>
+      <div class="label" style="margin-bottom:8px">최근 사용 RECENT</div>
+      <div class="swatches recent" id="recent-swatches"></div>
     </div>
     <div>
       <div class="label" style="margin-bottom:6px">굵기 <span id="width-val">3</span>px</div>
@@ -466,6 +502,7 @@
     Dohwa, createStore, TOOL_METAS, ACTION_METAS, SHORTCUT_SECTIONS,
     toolIconSVG, getActionMeta, getToolVariants,
     PALETTES, THEMES, applyTheme, STROKE_WIDTHS,
+    normalizeColor, RECENT_COLORS_MAX,
   } = window.Dohwa;
 
   // 1) 테마 적용 — CSS 커스텀 프로퍼티만 써서 chrome 색을 바꾼다
@@ -787,6 +824,73 @@
   }
   buildSwatches();
 
+  // ── 컬러 피커 & 최근 사용 색 ────────────────────────────────────────────
+  //   엔진은 색에 대해 아무 주장도 하지 않고, 스토어는 "최근 쓴 색"만 들고 있습니다.
+  //   피커 위젯은 여기(=소비자)에서 만듭니다 — 네이티브 <input type="color">면 충분.
+  const RECENT_KEY = 'dohwa:recent-colors';
+  const strokePicker = document.getElementById('stroke-picker');
+  const fillPicker = document.getElementById('fill-picker');
+  const recentBlock = document.getElementById('recent-block');
+  const recentWrap = document.getElementById('recent-swatches');
+
+  // 지난 세션의 최근 색 복원 (보관은 앱의 몫 — 라이브러리는 상태만 준다)
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_KEY) || '{}');
+    if (saved.strokes || saved.fills) store.setRecentColors(saved);
+  } catch (e) { /* 저장소가 막혀 있어도 데모는 그대로 동작 */ }
+
+  function deselectSwatches(id) {
+    document.getElementById(id).querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
+  }
+
+  // 피커로 고른 색은 곧장 스타일로 — 스토어가 알아서 '최근'에 기록한다
+  strokePicker.addEventListener('input', () => {
+    deselectSwatches('stroke-swatches');
+    app.setStyle({ stroke: strokePicker.value });
+  });
+  fillPicker.addEventListener('input', () => {
+    deselectSwatches('fill-swatches');
+    app.setStyle({ fill: fillPicker.value });
+  });
+
+  // 최근 색: 클릭하면 그 색으로 되돌아간다. stroke/fill을 한 줄에 합쳐서 보여준다.
+  let lastRecentKey = '';
+  function renderRecent(s) {
+    const colors = [];
+    const seen = new Set();
+    for (const c of [...s.recentStrokes, ...s.recentFills]) {
+      const k = normalizeColor(c);
+      if (!seen.has(k)) { seen.add(k); colors.push(c); }
+    }
+    const list = colors.slice(0, RECENT_COLORS_MAX);
+    const key = list.join(',');
+    if (key === lastRecentKey) return; // 바뀐 게 없으면 DOM을 건드리지 않는다
+    lastRecentKey = key;
+
+    recentBlock.hidden = list.length === 0;
+    recentWrap.innerHTML = '';
+    list.forEach((color) => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch';
+      btn.style.background = color;
+      btn.title = color + ' — 클릭: 선 색 / Shift+클릭: 채움 색';
+      btn.addEventListener('click', (e) => {
+        if (e.shiftKey) {
+          deselectSwatches('fill-swatches');
+          app.setStyle({ fill: color });
+        } else {
+          deselectSwatches('stroke-swatches');
+          app.setStyle({ stroke: color });
+        }
+      });
+      recentWrap.appendChild(btn);
+    });
+
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify({ strokes: s.recentStrokes, fills: s.recentFills }));
+    } catch (e) { /* 저장 실패는 무시 — 최근 색은 편의 기능일 뿐 */ }
+  }
+
   // 굵기 — 프리셋 STROKE_WIDTHS를 range의 눈금으로
   const widthRange = document.getElementById('width-range');
   widthRange.min = STROKE_WIDTHS[0];
@@ -802,6 +906,11 @@
   //    (React라면 useSyncExternalStore(store.subscribe, store.getSnapshot))
   function renderUI() {
     const s = store.getSnapshot();
+
+    renderRecent(s);
+    // 피커 색상은 현재 스타일을 따라간다 (팔레트/최근 색으로 바꿔도 동기화)
+    if (/^#[0-9a-f]{6}$/i.test(s.style.stroke)) strokePicker.value = s.style.stroke;
+    if (/^#[0-9a-f]{6}$/i.test(s.style.fill)) fillPicker.value = s.style.fill;
 
     // 변형 툴이 켜지면 부모 버튼이 그 아이콘으로 켜진다
     const parentTool = VARIANT_PARENT.get(s.tool);

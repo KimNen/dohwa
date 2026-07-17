@@ -15,7 +15,7 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 | import | 내용 | DOM 필요? |
 | --- | --- | --- |
 | `dohwa` | 엔진, 순수 지오메트리, SVG 직렬화 | 엔진은 필요, 지오메트리는 불필요 |
-| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, 아이콘, `createStore()` | 불필요 |
+| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, 아이콘, `createStore()`, 최근 색 | 불필요 |
 | `dohwa/presets` | `PALETTES`, `THEMES`, `applyTheme()`, `STROKE_WIDTHS` | `applyTheme`만 필요 |
 | `dohwa/nodes` | 순수 노드 팩토리 + `validateScene()` | 불필요 |
 
@@ -160,6 +160,31 @@ applyTheme(document.documentElement, THEMES[0]);
 app.setStyle({ stroke: 'var(--brand-600)', strokeWidth: 4 });
 ```
 
+### 컬러 피커 & 최근 사용 색
+
+팔레트의 고정 색에 갇힐 필요는 없습니다. **피커 위젯은 엔진이 그리지 않습니다** —
+네이티브 `<input type="color">` 하나면 충분하고, 라이브러리는 그 결과로 생긴
+*상태*(최근 쓴 색)만 들고 있습니다. 최대 10개까지 기억하고 중복은 앞으로 끌어올립니다.
+
+```ts
+import { pushRecent, RECENT_COLORS_MAX } from 'dohwa/ui';
+
+// 피커에서 고른 색을 그대로 넘기면 스토어가 알아서 '최근'에 기록한다
+picker.oninput = () => app.setStyle({ stroke: picker.value });
+
+store.subscribe(() => {
+  const { recentStrokes, recentFills } = store.getSnapshot();
+  // ['#3e6b47', '#c8431f', ...] — 최신순, 최대 10개, 'transparent'는 제외
+  renderSwatches(recentStrokes);
+});
+
+// 지난 세션 복원 (보관은 앱의 몫)
+store.setRecentColors(JSON.parse(localStorage.getItem('recent') ?? '{}'));
+```
+
+데모(`demo/index.html`)가 이 패턴의 레퍼런스 구현입니다 — 피커 + 최근 색 스와치 줄
+(클릭: 선 색 / Shift+클릭: 채움 색)을 의존성 없이 만들어 씁니다.
+
 ## 브라우저 없이 씬 만들기
 
 `dohwa/nodes`와 지오메트리 모듈은 DOM에 의존하지 않습니다 — 서버에서 다이어그램을 생성하거나,
@@ -255,7 +280,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 
 ### 이벤트 — `app.on(event, fn)`
 
-`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'crop'` (id | null) · `'replay'` (boolean)
+`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'style'` (style) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'crop'` (id | null) · `'replay'` (boolean)
 
 ### 키보드
 

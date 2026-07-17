@@ -15,7 +15,7 @@ geometry is DOM-free, so the same code runs in Node, in tests, or on a server.
 | import | what's in it | needs a DOM? |
 | --- | --- | --- |
 | `dohwa` | engine, pure geometry, SVG serialization | engine yes, geometry no |
-| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, icons, `createStore()` | no |
+| `dohwa/ui` | `TOOL_METAS`, `ACTION_METAS`, icons, `createStore()`, recent colors | no |
 | `dohwa/presets` | `PALETTES`, `THEMES`, `applyTheme()`, `STROKE_WIDTHS` | only `applyTheme` |
 | `dohwa/nodes` | pure node factories + `validateScene()` | no |
 
@@ -160,6 +160,32 @@ applyTheme(document.documentElement, THEMES[0]);
 app.setStyle({ stroke: 'var(--brand-600)', strokeWidth: 4 });
 ```
 
+### Color picker & recent colors
+
+You aren't limited to the palette's fixed colors. **The engine renders no picker
+widget** — a native `<input type="color">` is enough — but it does keep the
+*state* a picker produces: the colors you used lately, up to 10, deduped, most
+recent first.
+
+```ts
+import { pushRecent, RECENT_COLORS_MAX } from 'dohwa/ui';
+
+// hand the picked color straight to the engine; the store records it for you
+picker.oninput = () => app.setStyle({ stroke: picker.value });
+
+store.subscribe(() => {
+  const { recentStrokes, recentFills } = store.getSnapshot();
+  // ['#3e6b47', '#c8431f', ...] — newest first, max 10, never 'transparent'
+  renderSwatches(recentStrokes);
+});
+
+// restore a previous session (persistence is the app's job)
+store.setRecentColors(JSON.parse(localStorage.getItem('recent') ?? '{}'));
+```
+
+`demo/index.html` is the reference implementation: a picker plus a recent-color
+swatch row (click = stroke, Shift+click = fill), built with zero dependencies.
+
 ## Building scenes without a browser
 
 `dohwa/nodes` and the geometry module are DOM-free — generate diagrams on a server,
@@ -256,7 +282,7 @@ implementation of that pattern.
 
 ### Events — `app.on(event, fn)`
 
-`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'crop'` (id | null) · `'replay'` (boolean)
+`'change'` · `'selection'` (ids) · `'tool'` (tool) · `'style'` (style) · `'history'` ({canUndo, canRedo}) · `'viewport'` (viewport) · `'textedit'` (id | null) · `'crop'` (id | null) · `'replay'` (boolean)
 
 ### Keyboard
 

@@ -101,3 +101,50 @@ ok('shortcut tool rows track TOOL_METAS', SHORTCUT_SECTIONS.find((s) => s.key ==
   .items.some((i) => i.key === 'pen' && i.keys[0] === 'P'));
 const allShortcutKeys = SHORTCUT_SECTIONS.flatMap((s) => s.items.map((i) => `${s.key}:${i.key}`));
 ok('shortcut item keys unique', new Set(allShortcutKeys).size === allShortcutKeys.length);
+
+// --- 최근 사용 색 (v0.5)
+const { pushRecent, normalizeColor, isPaint, RECENT_COLORS_MAX } = await import('../dist/ui.js');
+
+ok('normalizeColor expands #abc', normalizeColor('#ABC') === '#aabbcc');
+ok('normalizeColor lowercases', normalizeColor('#FF0000') === '#ff0000');
+ok('normalizeColor strips spaces', normalizeColor('rgba(1, 2, 3, 0.5)') === 'rgba(1,2,3,0.5)');
+ok('isPaint rejects transparent', isPaint('transparent') === false && isPaint('none') === false);
+ok('isPaint accepts colors', isPaint('#fff') === true && isPaint('rgba(0,0,0,0.2)') === true);
+
+ok('pushRecent adds to the front', pushRecent(['#a00'], '#0a0')[0] === '#0a0');
+ok('pushRecent does not mutate input', (() => {
+  const orig = ['#a00'];
+  pushRecent(orig, '#0a0');
+  return orig.length === 1;
+})());
+ok('pushRecent dedupes case/short hex', (() => {
+  const list = pushRecent(pushRecent([], '#ffffff'), '#FFF');
+  return list.length === 1;
+})());
+ok('re-using a color moves it to the front', (() => {
+  let l = [];
+  for (const c of ['#a00', '#0a0', '#00a']) l = pushRecent(l, c);
+  l = pushRecent(l, '#a00'); // reuse the oldest
+  return l[0] === '#a00' && l.length === 3;
+})());
+ok('pushRecent caps at max', (() => {
+  let l = [];
+  for (let i = 0; i < 20; i++) l = pushRecent(l, `#0000${i.toString(16).padStart(2, '0')}`);
+  return l.length === RECENT_COLORS_MAX;
+})());
+ok('pushRecent keeps most recent when capping', (() => {
+  let l = [];
+  for (let i = 0; i < 12; i++) l = pushRecent(l, `#0000${i.toString(16).padStart(2, '0')}`);
+  return l[0] === '#00000b'; // the last one pushed
+})());
+ok('pushRecent ignores transparent', pushRecent(['#a00'], 'transparent').join() === '#a00');
+ok('RECENT_COLORS_MAX is 10', RECENT_COLORS_MAX === 10);
+
+// 'style' 이벤트: 선택이 없을 때의 setStyle도 툴바에 도달해야 한다.
+// (이게 없으면 store 스냅샷의 style/recent 색이 낡은 채로 남는다)
+const { Emitter } = await import('../dist/index.js');
+const em = new Emitter();
+let styleSeen = null;
+em.on('style', (s) => { styleSeen = s; });
+em.emit('style', { stroke: '#123456' });
+ok("'style' event carries the new style", styleSeen && styleSeen.stroke === '#123456');

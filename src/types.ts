@@ -233,6 +233,7 @@ export type DohwaEvent =
   | 'change'
   | 'selection'
   | 'tool'
+  | 'style'
   | 'history'
   | 'viewport'
   | 'textedit'

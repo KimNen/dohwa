@@ -4,4 +4,5 @@
  */
 export { TOOL_METAS, ACTION_METAS, SHORTCUT_SECTIONS, ICON_ATTRS, getToolMeta, getToolsByGroup, getToolVariants, getActionMeta, toolIconSVG, } from './tools.js';
 export { DohwaStore, createStore } from './store.js';
+export { RECENT_COLORS_MAX, normalizeColor, isPaint, pushRecent } from './colors.js';
 //# sourceMappingURL=ui.js.map

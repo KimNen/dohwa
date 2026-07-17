@@ -119,6 +119,9 @@ export class Dohwa {
             this.selectedNodes().forEach(apply);
             this.commit();
         }
+        // 'change' means the scene changed; a style-only edit (nothing selected)
+        // still has to reach the toolbar, so it gets its own event.
+        this.emitter.emit('style', this.getStyle());
         this.requestRender();
     }
     /** Whether moves snap to other objects' edges/centers. */

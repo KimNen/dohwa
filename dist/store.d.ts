@@ -26,6 +26,10 @@ export interface DohwaUIState {
     isCropping: boolean;
     /** true when exactly one unlocked image is selected */
     canCrop: boolean;
+    /** recently used stroke colors, most recent first (max RECENT_COLORS_MAX) */
+    recentStrokes: string[];
+    /** recently used fill colors, most recent first ('transparent' is never recorded) */
+    recentFills: string[];
 }
 export type Unsubscribe = () => void;
 export declare class DohwaStore {
@@ -33,6 +37,10 @@ export declare class DohwaStore {
     private listeners;
     private state;
     private offs;
+    private recentStrokes;
+    private recentFills;
+    private lastStroke;
+    private lastFill;
     constructor(app: Dohwa);
     /** For React: useSyncExternalStore(store.subscribe, store.getSnapshot) */
     subscribe: (fn: () => void) => Unsubscribe;
@@ -42,6 +50,20 @@ export declare class DohwaStore {
     /** Run any toolbar action by key — one switch instead of 20 wired handlers. */
     run: (key: ActionKey) => void;
     destroy(): void;
+    /**
+     * Record the current style's colors as "recently used" when they change.
+     * Driven off the engine's own style, so colors picked from a palette, a
+     * native picker, or `setStyle()` in code all land in the same list.
+     */
+    private trackColors;
+    /**
+     * Restore recent colors (e.g. from localStorage on load). Most recent first;
+     * entries are deduped and capped, and 'transparent' is dropped.
+     */
+    setRecentColors(recent: {
+        strokes?: string[];
+        fills?: string[];
+    }): void;
     private read;
 }
 /** Convenience: create a store bound to an engine instance. */

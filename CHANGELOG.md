@@ -15,6 +15,14 @@
 
 ### Added
 
+- **최근 사용 색 & 컬러 피커** — 팔레트의 고정 5색에 갇히지 않고 아무 색이나 쓸 수
+  있습니다. 스토어가 최근에 쓴 색을 **최대 10개**까지 기억하고(중복은 앞으로 끌어올림,
+  `transparent`는 기록 안 함), 스냅샷의 `recentStrokes` / `recentFills`로 노출합니다.
+  엔진은 여전히 위젯을 그리지 않습니다 — 피커는 소비자가 만들고, 데모가 네이티브
+  `<input type="color">`와 최근 색 스와치 줄(클릭: 선 색 / Shift+클릭: 채움 색,
+  localStorage에 보관)로 레퍼런스 구현을 보여줍니다. 순수 함수 `pushRecent` /
+  `normalizeColor`(`#ABC`↔`#aabbcc` 중복 제거) / `isPaint`와 `RECENT_COLORS_MAX`를
+  `dohwa/ui`에서 export하고, `store.setRecentColors()`로 지난 세션을 복원합니다.
 - **필압 감지 스트로크** — 스타일러스로 그리면 필압에 따라 선 굵기가 변합니다.
   압력은 `StrokePoint.pressure`(0~1)로 점마다 기록되며, `Point`를 확장한 타입이라
   이동·스케일·반전 등 기존 지오메트리 연산이 값을 그대로 통과시킵니다. 캔버스는
@@ -77,6 +85,10 @@
 
 ### Fixed
 
+- **선택 없이 `setStyle()`을 호출하면 아무 이벤트도 발생하지 않아**, 스토어 스냅샷의
+  `style`이 낡은 채로 남았습니다(툴바가 현재 색·굵기를 반영하지 못함). 새 `'style'`
+  이벤트를 추가해 스타일만 바뀐 경우에도 UI가 갱신됩니다. `'change'`는 씬이 바뀐
+  경우를 의미하므로 그대로 두고 별도 이벤트로 분리했습니다.
 - `esbuild`를 devDependencies에 명시적으로 선언했습니다. 그동안 tsup의
   전이 의존성에 의존하고 있어, tsup이 esbuild 버전을 바꾸면 빌드가 조용히
   깨질 수 있었습니다.
