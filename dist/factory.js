@@ -25,17 +25,17 @@ export function diamond(init) {
     return { id: createId(), type: 'diamond', x, y, w, h, style: withStyle(style), transform, rotation, locked };
 }
 export function triangle(init) {
-    const { x, y, w, h, flipY, style, rotation, locked } = init;
+    const { x, y, w, h, flipY, style, transform, rotation, locked } = init;
     return {
         id: createId(), type: 'triangle', x, y, w, h, flipY,
-        style: withStyle(style), rotation, locked,
+        style: withStyle(style), transform, rotation, locked,
     };
 }
 export function line(init) {
-    const { x1, y1, x2, y2, arrow, arrowStart, style, rotation, locked } = init;
+    const { x1, y1, x2, y2, arrow, arrowStart, style, transform, rotation, locked } = init;
     return {
         id: createId(), type: 'line', x1, y1, x2, y2, arrow, arrowStart,
-        style: withStyle(style), rotation, locked,
+        style: withStyle(style), transform, rotation, locked,
     };
 }
 export function arrow(init) {
@@ -43,10 +43,10 @@ export function arrow(init) {
     return line({ ...rest, arrow: true, arrowStart: both || undefined });
 }
 export function path(init) {
-    const { points, style, rotation, locked } = init;
+    const { points, style, transform, rotation, locked } = init;
     return {
         id: createId(), type: 'path', points: points.map((p) => ({ x: p.x, y: p.y })),
-        style: withStyle(style), rotation, locked,
+        style: withStyle(style), transform, rotation, locked,
     };
 }
 /**
@@ -69,22 +69,23 @@ export function text(init) {
         w: longest * fontSize * 0.6, // estimate — re-measured in the browser
         h: lines.length * fontSize * 1.3,
         style: withStyle({ fill: 'transparent', ...init.style }),
+        transform: init.transform,
         rotation: init.rotation,
         locked: init.locked,
     };
 }
 export function image(init) {
-    const { x, y, w, h, src, flipX, flipY, crop, style, rotation, locked } = init;
+    const { x, y, w, h, src, flipX, flipY, crop, style, transform, rotation, locked } = init;
     return {
         id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
         style: withStyle({ stroke: 'transparent', ...style }),
-        rotation, locked,
+        transform, rotation, locked,
     };
 }
 export function group(children, init) {
     return {
         id: createId(), type: 'group', children,
-        style: withStyle(init?.style), rotation: init?.rotation, locked: init?.locked,
+        style: withStyle(init?.style), transform: init?.transform, rotation: init?.rotation, locked: init?.locked,
     };
 }
 /** Wrap nodes into a valid scene object. */

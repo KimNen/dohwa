@@ -260,8 +260,18 @@ export function scaleNodeInto(node, from, to) {
 export function flipNode(node, axis, center) {
     const fx = (x) => 2 * center.x - x;
     const fy = (y) => 2 * center.y - y;
-    if (node.rotation)
+    // Mirror the node's orientation. The transform is applied around the bbox
+    // center, so reflecting it means conjugating by the reflection R (R·M·R,
+    // R being its own inverse): a horizontal flip sends R(θ)→R(−θ), and also
+    // correctly mirrors non-uniform scale and skew. `transform` takes precedence
+    // over the legacy `rotation` field, matching nodeMatrix().
+    if (node.transform) {
+        const r = axis === 'h' ? [-1, 0, 0, 1, 0, 0] : [1, 0, 0, -1, 0, 0];
+        node.transform = multiply(multiply(r, node.transform), r);
+    }
+    else if (node.rotation) {
         node.rotation = -node.rotation;
+    }
     switch (node.type) {
         case 'rect':
         case 'ellipse':

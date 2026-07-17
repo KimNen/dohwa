@@ -11,7 +11,12 @@ export function multiply(m1, m2) {
         b1 * e2 + d1 * f2 + f1,
     ];
 }
-/** Compose a chain left-to-right: composeAll([A, B, C]) applies A, then B, then C. */
+/**
+ * Multiply a chain in array order: composeAll([A, B, C]) = A·B·C. Because
+ * matrices act on points from the right, the LAST matrix is applied to a
+ * point first — composeAll([A, B, C]) applied to p is A(B(C(p))), i.e. C,
+ * then B, then A.
+ */
 export function composeAll(matrices) {
     let acc = IDENTITY;
     for (const m of matrices)

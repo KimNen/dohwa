@@ -29,7 +29,12 @@ export function multiply(m1: Matrix, m2: Matrix): Matrix {
   ];
 }
 
-/** Compose a chain left-to-right: composeAll([A, B, C]) applies A, then B, then C. */
+/**
+ * Multiply a chain in array order: composeAll([A, B, C]) = A·B·C. Because
+ * matrices act on points from the right, the LAST matrix is applied to a
+ * point first — composeAll([A, B, C]) applied to p is A(B(C(p))), i.e. C,
+ * then B, then A.
+ */
 export function composeAll(matrices: Matrix[]): Matrix {
   let acc = IDENTITY;
   for (const m of matrices) acc = multiply(acc, m);
@@ -56,8 +61,9 @@ export function skewing(skewX: number, skewY: number): Matrix {
 }
 
 /**
- * Build a transform around a pivot point: translate to origin, apply
- * rotate·scale·skew, translate back — plus an overall translation.
+ * Build a transform as translate · rotate · skew · scale, so that a point is
+ * scaled first, then skewed, then rotated, then translated. Pivoting around a
+ * node's bbox center is handled separately by nodeMatrix(), not here.
  */
 export interface TransformParts {
   translateX?: number;

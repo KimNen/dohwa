@@ -279,7 +279,17 @@ export function scaleNodeInto(node: DohwaNode, from: BBox, to: BBox): void {
 export function flipNode(node: DohwaNode, axis: 'h' | 'v', center: Point): void {
   const fx = (x: number) => 2 * center.x - x;
   const fy = (y: number) => 2 * center.y - y;
-  if (node.rotation) node.rotation = -node.rotation;
+  // Mirror the node's orientation. The transform is applied around the bbox
+  // center, so reflecting it means conjugating by the reflection R (R·M·R,
+  // R being its own inverse): a horizontal flip sends R(θ)→R(−θ), and also
+  // correctly mirrors non-uniform scale and skew. `transform` takes precedence
+  // over the legacy `rotation` field, matching nodeMatrix().
+  if (node.transform) {
+    const r: Matrix = axis === 'h' ? [-1, 0, 0, 1, 0, 0] : [1, 0, 0, -1, 0, 0];
+    node.transform = multiply(multiply(r, node.transform), r);
+  } else if (node.rotation) {
+    node.rotation = -node.rotation;
+  }
 
   switch (node.type) {
     case 'rect':

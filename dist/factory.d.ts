@@ -29,6 +29,7 @@ export declare function line(init: {
     arrow?: boolean;
     arrowStart?: boolean;
     style?: Partial<Style>;
+    transform?: Matrix;
     rotation?: number;
     locked?: boolean;
 }): LineNode;
@@ -40,12 +41,14 @@ export declare function arrow(init: {
     /** arrowhead on both ends (양방향) */
     both?: boolean;
     style?: Partial<Style>;
+    transform?: Matrix;
     rotation?: number;
     locked?: boolean;
 }): LineNode;
 export declare function path(init: {
     points: Point[];
     style?: Partial<Style>;
+    transform?: Matrix;
     rotation?: number;
     locked?: boolean;
 }): PathNode;
@@ -60,6 +63,7 @@ export declare function text(init: {
     fontSize?: number;
     fontFamily?: string;
     style?: Partial<Style>;
+    transform?: Matrix;
     rotation?: number;
     locked?: boolean;
 }): TextNode;
@@ -77,6 +81,7 @@ export declare function image(init: BoxInit & {
 }): ImageNode;
 export declare function group(children: DohwaNode[], init?: {
     style?: Partial<Style>;
+    transform?: Matrix;
     rotation?: number;
     locked?: boolean;
 }): GroupNode;

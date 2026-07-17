@@ -25,9 +25,9 @@ export declare class ObjectCache {
     private misses;
     /**
      * Draw `node` into `ctx`, using a cached bitmap when possible.
-     * `ctx` is already in world space with the node's transform NOT yet applied;
-     * the node's own transform is applied inside renderNode for the miss path,
-     * and reproduced here for the hit path.
+     * `ctx` must be in plain world space with NO node transform applied: the
+     * bitmap is rendered over the node's world-space AABB (getAABB, which already
+     * includes the transform), so it is blitted directly at its world origin.
      * Returns true if it handled drawing, false if the caller should renderNode directly.
      */
     draw(ctx: CanvasRenderingContext2D, node: DohwaNode, images: ImageCache, deviceScale: number): boolean;

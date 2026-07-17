@@ -61,22 +61,22 @@ export function diamond(init: BoxInit): DiamondNode {
 }
 
 export function triangle(init: BoxInit & { flipY?: boolean }): TriangleNode {
-  const { x, y, w, h, flipY, style, rotation, locked } = init;
+  const { x, y, w, h, flipY, style, transform, rotation, locked } = init;
   return {
     id: createId(), type: 'triangle', x, y, w, h, flipY,
-    style: withStyle(style), rotation, locked,
+    style: withStyle(style), transform, rotation, locked,
   };
 }
 
 export function line(init: {
   x1: number; y1: number; x2: number; y2: number;
   arrow?: boolean; arrowStart?: boolean;
-  style?: Partial<Style>; rotation?: number; locked?: boolean;
+  style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): LineNode {
-  const { x1, y1, x2, y2, arrow, arrowStart, style, rotation, locked } = init;
+  const { x1, y1, x2, y2, arrow, arrowStart, style, transform, rotation, locked } = init;
   return {
     id: createId(), type: 'line', x1, y1, x2, y2, arrow, arrowStart,
-    style: withStyle(style), rotation, locked,
+    style: withStyle(style), transform, rotation, locked,
   };
 }
 
@@ -84,19 +84,19 @@ export function arrow(init: {
   x1: number; y1: number; x2: number; y2: number;
   /** arrowhead on both ends (양방향) */
   both?: boolean;
-  style?: Partial<Style>; rotation?: number; locked?: boolean;
+  style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): LineNode {
   const { both, ...rest } = init;
   return line({ ...rest, arrow: true, arrowStart: both || undefined });
 }
 
 export function path(init: {
-  points: Point[]; style?: Partial<Style>; rotation?: number; locked?: boolean;
+  points: Point[]; style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): PathNode {
-  const { points, style, rotation, locked } = init;
+  const { points, style, transform, rotation, locked } = init;
   return {
     id: createId(), type: 'path', points: points.map((p) => ({ x: p.x, y: p.y })),
-    style: withStyle(style), rotation, locked,
+    style: withStyle(style), transform, rotation, locked,
   };
 }
 
@@ -107,7 +107,7 @@ export function path(init: {
 export function text(init: {
   x: number; y: number; text: string;
   fontSize?: number; fontFamily?: string;
-  style?: Partial<Style>; rotation?: number; locked?: boolean;
+  style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): TextNode {
   const fontSize = init.fontSize ?? 28;
   const fontFamily = init.fontFamily ?? 'sans-serif';
@@ -124,6 +124,7 @@ export function text(init: {
     w: longest * fontSize * 0.6, // estimate — re-measured in the browser
     h: lines.length * fontSize * 1.3,
     style: withStyle({ fill: 'transparent', ...init.style }),
+    transform: init.transform,
     rotation: init.rotation,
     locked: init.locked,
   };
@@ -134,20 +135,20 @@ export function image(init: BoxInit & {
   /** visible source window, fractions 0..1 of the original image */
   crop?: { x: number; y: number; w: number; h: number };
 }): ImageNode {
-  const { x, y, w, h, src, flipX, flipY, crop, style, rotation, locked } = init;
+  const { x, y, w, h, src, flipX, flipY, crop, style, transform, rotation, locked } = init;
   return {
     id: createId(), type: 'image', x, y, w, h, src, flipX, flipY, crop,
     style: withStyle({ stroke: 'transparent', ...style }),
-    rotation, locked,
+    transform, rotation, locked,
   };
 }
 
 export function group(children: DohwaNode[], init?: {
-  style?: Partial<Style>; rotation?: number; locked?: boolean;
+  style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): GroupNode {
   return {
     id: createId(), type: 'group', children,
-    style: withStyle(init?.style), rotation: init?.rotation, locked: init?.locked,
+    style: withStyle(init?.style), transform: init?.transform, rotation: init?.rotation, locked: init?.locked,
   };
 }
 

@@ -83,9 +83,9 @@ export class ObjectCache {
 
   /**
    * Draw `node` into `ctx`, using a cached bitmap when possible.
-   * `ctx` is already in world space with the node's transform NOT yet applied;
-   * the node's own transform is applied inside renderNode for the miss path,
-   * and reproduced here for the hit path.
+   * `ctx` must be in plain world space with NO node transform applied: the
+   * bitmap is rendered over the node's world-space AABB (getAABB, which already
+   * includes the transform), so it is blitted directly at its world origin.
    * Returns true if it handled drawing, false if the caller should renderNode directly.
    */
   draw(
@@ -108,9 +108,9 @@ export class ObjectCache {
       this.hits++;
     }
 
-    // Blit the cached bitmap at its local origin. The caller is responsible
-    // for having applied the node's transform to `ctx` beforehand (mirroring
-    // how renderNode applies it), so the bitmap lands in the right place.
+    // Blit the cached bitmap at its world-space origin. The transform is
+    // already baked into the bitmap (rendered over getAABB), so `ctx` stays in
+    // plain world space here — no transform is re-applied.
     ctx.drawImage(entry.canvas, entry.originX, entry.originY, entry.w, entry.h);
     return true;
   }

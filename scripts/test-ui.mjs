@@ -1,4 +1,4 @@
-import { rect, ellipse, text, arrow, group, scene, validateScene, createId } from '../dist/nodes.js';
+import { rect, ellipse, diamond, triangle, line, arrow, path, text, image, group, scene, validateScene, createId, compose } from '../dist/nodes.js';
 import { TOOL_METAS, ACTION_METAS, getToolMeta, getToolsByGroup, toolIconSVG, getActionMeta } from '../dist/ui.js';
 import { HANJI_PALETTE, SLATE_PALETTE, PALETTES, getPalette, THEMES, STROKE_WIDTHS } from '../dist/presets.js';
 import { getBBox, getAABB, sceneToSVG, hitTestNode } from '../dist/index.js';
@@ -15,6 +15,27 @@ const a = arrow({ x1: 0, y1: 0, x2: 50, y2: 50 });
 ok('arrow sets flag', a.type === 'line' && a.arrow === true);
 const g = group([r, ellipse({ x: 200, y: 0, w: 40, h: 40 })]);
 ok('group bbox spans children', getBBox(g).w === 240);
+
+// --- every factory carries `transform` through (regression: some silently dropped it)
+{
+  const m = compose({ angle: 0.5 });
+  const eq = (n) => Array.isArray(n.transform) && n.transform.every((v, i) => v === m[i]);
+  const built = {
+    rect: rect({ x:0, y:0, w:10, h:10, transform: m }),
+    ellipse: ellipse({ x:0, y:0, w:10, h:10, transform: m }),
+    diamond: diamond({ x:0, y:0, w:10, h:10, transform: m }),
+    triangle: triangle({ x:0, y:0, w:10, h:10, transform: m }),
+    line: line({ x1:0, y1:0, x2:10, y2:10, transform: m }),
+    arrow: arrow({ x1:0, y1:0, x2:10, y2:10, transform: m }),
+    path: path({ points: [{x:0,y:0},{x:5,y:5}], transform: m }),
+    text: text({ x:0, y:0, text: 'x', transform: m }),
+    image: image({ x:0, y:0, w:10, h:10, src: 'x.png', transform: m }),
+    group: group([], { transform: m }),
+  };
+  for (const [name, node] of Object.entries(built)) {
+    ok(`${name} factory keeps transform`, eq(node));
+  }
+}
 
 // --- 팩토리 씬이 실제 엔진 함수와 호환되는가 (핵심)
 const s = scene([r, t, a, g]);
@@ -57,7 +78,6 @@ ok('rotation flows into AABB', Math.abs(getAABB(rot).h - 100) < 1e-6);
 
 // --- 양방향 화살표 · 크롭 · 단축키 재료 (v0.5)
 const { getToolVariants, SHORTCUT_SECTIONS } = await import('../dist/ui.js');
-const { image, line } = await import('../dist/nodes.js');
 
 const dbl = arrow({ x1: 0, y1: 0, x2: 50, y2: 0, both: true });
 ok('arrow factory: both heads', dbl.arrow === true && dbl.arrowStart === true);
