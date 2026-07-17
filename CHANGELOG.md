@@ -13,6 +13,17 @@
 
 ### Added
 
+- **정렬 & 분배** — 선택한 노드를 공통 모서리/중심에 맞추는 정렬(좌·우·수평중앙,
+  상·하·수직중앙)과, 노드 사이 간격을 균등하게 벌리는 분배(가로/세로). 순수
+  지오메트리라 DOM 없이 테스트 가능하며 회전·스큐된 노드도 world AABB 기준으로
+  올바르게 처리됩니다. API: `alignSelection(mode)` / `distributeSelection(axis)`,
+  순수 함수 `alignDeltas` / `distributeDeltas`(`dohwa`), 액션 메타 `alignLeft`·
+  `alignHCenter`·`alignRight`·`alignTop`·`alignVCenter`·`alignBottom`·
+  `distributeH`·`distributeV`(분배는 `minSelection: 3`).
+- **z-order 한 단계 이동** — 기존 맨 앞/맨 뒤(`bringToFront`/`sendToBack`)에 더해
+  한 칸씩 앞/뒤로 옮기는 `bringForward()` / `sendBackward()`. 연속 선택 블록은
+  내부 순서를 유지한 채 함께 이동합니다. 순수 함수 `orderStep`(`dohwa`), 액션
+  메타 `bringForward` / `sendBackward`.
 - **이미지 잘라내기(크롭)** — `ImageNode.crop`(원본 대비 0~1 비율의 소스 창)과
   인터랙티브 크롭 에디터. 이미지 더블클릭 또는 액션바 ✂로 진입해 핸들로 자르고,
   안쪽을 드래그해 창 뒤의 이미지를 움직입니다. `Enter` 적용 / `Esc` 취소.

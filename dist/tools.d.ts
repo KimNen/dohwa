@@ -44,7 +44,7 @@ export declare function getToolsByGroup(group: ToolMeta['group']): ToolMeta[];
 export declare function getToolVariants(tool: Tool): ToolMeta[];
 /** Build a `<path d="...">` string set — handy for innerHTML-based UIs. */
 export declare function toolIconSVG(tool: Tool, size?: number): string;
-export type ActionKey = 'undo' | 'redo' | 'group' | 'ungroup' | 'bringToFront' | 'sendToBack' | 'flipH' | 'flipV' | 'crop' | 'lock' | 'duplicate' | 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll' | 'replay' | 'zoomIn' | 'zoomOut' | 'zoomToFit' | 'clear';
+export type ActionKey = 'undo' | 'redo' | 'group' | 'ungroup' | 'bringToFront' | 'sendToBack' | 'bringForward' | 'sendBackward' | 'alignLeft' | 'alignHCenter' | 'alignRight' | 'alignTop' | 'alignVCenter' | 'alignBottom' | 'distributeH' | 'distributeV' | 'flipH' | 'flipV' | 'crop' | 'lock' | 'duplicate' | 'copy' | 'cut' | 'paste' | 'delete' | 'selectAll' | 'replay' | 'zoomIn' | 'zoomOut' | 'zoomToFit' | 'clear';
 export interface ActionMeta {
     key: ActionKey;
     label: string;
@@ -54,6 +54,8 @@ export interface ActionMeta {
     needsSelection?: boolean;
     /** requires 2+ selected nodes */
     needsMultiSelection?: boolean;
+    /** requires at least N selected nodes (e.g. distribute needs 3) */
+    minSelection?: number;
     icon?: string[];
 }
 export declare const ACTION_METAS: readonly ActionMeta[];

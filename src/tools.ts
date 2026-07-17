@@ -191,6 +191,16 @@ export type ActionKey =
   | 'ungroup'
   | 'bringToFront'
   | 'sendToBack'
+  | 'bringForward'
+  | 'sendBackward'
+  | 'alignLeft'
+  | 'alignHCenter'
+  | 'alignRight'
+  | 'alignTop'
+  | 'alignVCenter'
+  | 'alignBottom'
+  | 'distributeH'
+  | 'distributeV'
   | 'flipH'
   | 'flipV'
   | 'crop'
@@ -216,6 +226,8 @@ export interface ActionMeta {
   needsSelection?: boolean;
   /** requires 2+ selected nodes */
   needsMultiSelection?: boolean;
+  /** requires at least N selected nodes (e.g. distribute needs 3) */
+  minSelection?: number;
   icon?: string[];
 }
 
@@ -226,6 +238,16 @@ export const ACTION_METAS: readonly ActionMeta[] = [
   { key: 'ungroup', label: 'Ungroup', shortcut: 'Ctrl+Shift+G', needsSelection: true },
   { key: 'bringToFront', label: 'Bring to front', needsSelection: true },
   { key: 'sendToBack', label: 'Send to back', needsSelection: true },
+  { key: 'bringForward', label: 'Bring forward', needsSelection: true },
+  { key: 'sendBackward', label: 'Send backward', needsSelection: true },
+  { key: 'alignLeft', label: 'Align left', needsMultiSelection: true, icon: ['M4 3v18', 'M8 7h9v4H8z', 'M8 15h6v4H8z'] },
+  { key: 'alignHCenter', label: 'Align horizontal centers', needsMultiSelection: true, icon: ['M12 3v18', 'M8 7h8v4H8z', 'M9 15h6v4H9z'] },
+  { key: 'alignRight', label: 'Align right', needsMultiSelection: true, icon: ['M20 3v18', 'M7 7h9v4H7z', 'M10 15h6v4h-6z'] },
+  { key: 'alignTop', label: 'Align top', needsMultiSelection: true, icon: ['M3 4h18', 'M7 8v9h4V8z', 'M15 8v6h4V8z'] },
+  { key: 'alignVCenter', label: 'Align vertical centers', needsMultiSelection: true, icon: ['M3 12h18', 'M7 8v8h4V8z', 'M15 9v6h4V9z'] },
+  { key: 'alignBottom', label: 'Align bottom', needsMultiSelection: true, icon: ['M3 20h18', 'M7 7v9h4V7z', 'M15 10v6h4v-6z'] },
+  { key: 'distributeH', label: 'Distribute horizontally', minSelection: 3, icon: ['M4 3v18', 'M20 3v18', 'M10 8h4v8h-4z'] },
+  { key: 'distributeV', label: 'Distribute vertically', minSelection: 3, icon: ['M3 4h18', 'M3 20h18', 'M8 10h8v4H8z'] },
   { key: 'flipH', label: 'Flip horizontal', needsSelection: true },
   { key: 'flipV', label: 'Flip vertical', needsSelection: true },
   {

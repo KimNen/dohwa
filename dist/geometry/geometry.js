@@ -324,6 +324,76 @@ export function flipNode(node, axis, center) {
             break;
     }
 }
+/**
+ * Per-box translation deltas that align every box to the selection's shared
+ * edge/center. Pure: takes world AABBs, returns one {x,y} delta per box in the
+ * same order. A single box (or empty) yields zero deltas.
+ */
+export function alignDeltas(boxes, mode) {
+    if (boxes.length < 2)
+        return boxes.map(() => ({ x: 0, y: 0 }));
+    const u = unionBBox(boxes);
+    return boxes.map((b) => {
+        switch (mode) {
+            case 'left': return { x: u.x - b.x, y: 0 };
+            case 'right': return { x: u.x + u.w - (b.x + b.w), y: 0 };
+            case 'hcenter': return { x: u.x + u.w / 2 - (b.x + b.w / 2), y: 0 };
+            case 'top': return { x: 0, y: u.y - b.y };
+            case 'bottom': return { x: 0, y: u.y + u.h - (b.y + b.h) };
+            case 'vcenter': return { x: 0, y: u.y + u.h / 2 - (b.y + b.h / 2) };
+        }
+    });
+}
+/**
+ * Per-box translation deltas that spread boxes so the GAPS between consecutive
+ * boxes are equal (Figma's "distribute spacing"). The extreme boxes stay put;
+ * only the in-between ones move. Fewer than 3 boxes yields zero deltas.
+ */
+export function distributeDeltas(boxes, axis) {
+    const n = boxes.length;
+    const deltas = boxes.map(() => ({ x: 0, y: 0 }));
+    if (n < 3)
+        return deltas;
+    const horiz = axis === 'horizontal';
+    const size = (b) => (horiz ? b.w : b.h);
+    const start = (b) => (horiz ? b.x : b.y);
+    const order = boxes.map((_, i) => i).sort((a, b) => start(boxes[a]) - start(boxes[b]));
+    const first = boxes[order[0]];
+    const last = boxes[order[n - 1]];
+    const span = start(last) + size(last) - start(first);
+    const sumSize = boxes.reduce((s, b) => s + size(b), 0);
+    const gap = (span - sumSize) / (n - 1);
+    let cursor = start(first);
+    for (const i of order) {
+        const d = cursor - start(boxes[i]);
+        deltas[i] = horiz ? { x: d, y: 0 } : { x: 0, y: d };
+        cursor += size(boxes[i]) + gap;
+    }
+    return deltas;
+}
+/**
+ * Move the selected entries of an ordered id list one step toward the front
+ * (`forward`, i.e. later in the array) or back (`backward`). A contiguous run
+ * of selected ids moves together and preserves its internal order. Pure: does
+ * not mutate the input, returns a new array.
+ */
+export function orderStep(order, selected, dir) {
+    const next = order.slice();
+    const sel = (i) => selected.has(next[i]);
+    if (dir === 'forward') {
+        for (let i = next.length - 2; i >= 0; i--) {
+            if (sel(i) && !sel(i + 1))
+                [next[i], next[i + 1]] = [next[i + 1], next[i]];
+        }
+    }
+    else {
+        for (let i = 1; i < next.length; i++) {
+            if (sel(i) && !sel(i - 1))
+                [next[i], next[i - 1]] = [next[i - 1], next[i]];
+        }
+    }
+    return next;
+}
 // ---------------------------------------------------------------- image crop
 /**
  * The rect the FULL (uncropped) image would occupy, given the node's visible

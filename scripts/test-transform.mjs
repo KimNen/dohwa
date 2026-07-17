@@ -1,4 +1,4 @@
-import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode } from '../dist/geometry/geometry.js';
+import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep } from '../dist/geometry/geometry.js';
 import { compose, composeAll, rotation, scaling, translation, applyToPoint, decompose } from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
@@ -82,4 +82,47 @@ ok('decompose node angle', close(decompose(rotNode.transform).angle, 0.6));
   // scaling(2) is last -> applied first: (1,0)->(2,0); then translation -> (12,0)
   const p = applyToPoint(m, { x: 1, y: 0 });
   ok('composeAll is right-to-left', close(p.x, 12) && close(p.y, 0));
+}
+
+// --- alignDeltas: shared-edge / center alignment over world AABBs
+{
+  const boxes = [
+    { x: 0, y: 0, w: 20, h: 10 },
+    { x: 50, y: 100, w: 40, h: 20 },
+    { x: 100, y: 200, w: 10, h: 10 },
+  ]; // union: x 0..110, y 0..210
+  const dl = alignDeltas(boxes, 'left');
+  ok('align left: all share min x', boxes.every((b, i) => close(b.x + dl[i].x, 0)) && dl.every((d) => d.y === 0));
+  const dr = alignDeltas(boxes, 'right');
+  ok('align right: all share max x', boxes.every((b, i) => close(b.x + dr[i].x + b.w, 110)));
+  const dc = alignDeltas(boxes, 'hcenter');
+  ok('align hcenter: centers meet union center', boxes.every((b, i) => close(b.x + dc[i].x + b.w / 2, 55)));
+  const dt = alignDeltas(boxes, 'top');
+  ok('align top: all share min y', boxes.every((b, i) => close(b.y + dt[i].y, 0)) && dt.every((d) => d.x === 0));
+  ok('align single box is a no-op', alignDeltas([boxes[0]], 'left')[0].x === 0);
+}
+
+// --- distributeDeltas: equal gaps, extremes fixed
+{
+  const boxes = [
+    { x: 0, y: 0, w: 10, h: 10 },   // left extreme
+    { x: 15, y: 0, w: 10, h: 10 },  // middle (should move)
+    { x: 90, y: 0, w: 10, h: 10 },  // right extreme
+  ];
+  const d = distributeDeltas(boxes, 'horizontal');
+  // span 0..100 = 100, sizes 30, gap = (100-30)/2 = 35. positions: 0, 45, 90.
+  ok('distribute keeps left extreme', close(boxes[0].x + d[0].x, 0));
+  ok('distribute keeps right extreme', close(boxes[2].x + d[2].x, 90));
+  ok('distribute equalizes gaps', close(boxes[1].x + d[1].x, 45));
+  ok('distribute <3 boxes is a no-op', distributeDeltas([boxes[0], boxes[1]], 'horizontal').every((x) => x.x === 0 && x.y === 0));
+}
+
+// --- orderStep: one-step z-order move, blocks stay contiguous
+{
+  const order = ['a', 'b', 'c', 'd'];
+  ok('bringForward one step', orderStep(order, new Set(['a']), 'forward').join('') === 'bacd');
+  ok('sendBackward one step', orderStep(order, new Set(['c']), 'backward').join('') === 'acbd');
+  ok('front element cannot go further forward', orderStep(order, new Set(['d']), 'forward').join('') === 'abcd');
+  ok('contiguous block moves together', orderStep(order, new Set(['a', 'b']), 'forward').join('') === 'cabd');
+  ok('orderStep does not mutate input', order.join('') === 'abcd');
 }

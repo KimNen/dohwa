@@ -1,4 +1,5 @@
 import type { CropRect, DohwaEvent, DohwaNode, DohwaOptions, ExportPNGOptions, ExportSVGOptions, HistoryState, ImageNode, Point, ReplayOptions, SceneJSON, Style, TextNode, Tool, Viewport } from '../types.js';
+import { type AlignMode, type DistributeAxis } from '../geometry/geometry.js';
 export declare class Dohwa {
     readonly container: HTMLElement;
     readonly canvas: HTMLCanvasElement;
@@ -52,6 +53,15 @@ export declare class Dohwa {
     ungroup(): void;
     bringToFront(): void;
     sendToBack(): void;
+    /** Move the selection one step toward the front (later in z-order). */
+    bringForward(): void;
+    /** Move the selection one step toward the back (earlier in z-order). */
+    sendBackward(): void;
+    private reorderStep;
+    /** Align every selected node to the selection's shared edge or center. */
+    alignSelection(mode: AlignMode): void;
+    /** Spread the selection so gaps between consecutive nodes are equal. */
+    distributeSelection(axis: DistributeAxis): void;
     flipSelection(axis: 'h' | 'v'): void;
     lockSelection(): void;
     unlockAll(): void;

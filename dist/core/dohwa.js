@@ -1,5 +1,5 @@
 import { DEFAULT_STYLE } from '../types.js';
-import { bboxCenter, bboxIntersects, cropFromRects, cropFullRect, flipNode, getAABB, getBBox, hitTestNode, nodeMatrix, pointInBBox, rotatePoint, scaleNodeInto, translateNode, unionBBox, } from '../geometry/geometry.js';
+import { alignDeltas, bboxCenter, bboxIntersects, cropFromRects, cropFullRect, distributeDeltas, flipNode, getAABB, getBBox, hitTestNode, nodeMatrix, orderStep, pointInBBox, rotatePoint, scaleNodeInto, translateNode, unionBBox, } from '../geometry/geometry.js';
 import { isIdentity } from '../geometry/matrix.js';
 import { LINE_HEIGHT, measureText, renderScene } from '../render/render.js';
 import { sceneToSVG } from '../render/svg.js';
@@ -249,6 +249,47 @@ export class Dohwa {
     }
     sendToBack() {
         this.reorder((selected, rest) => [...selected, ...rest]);
+    }
+    /** Move the selection one step toward the front (later in z-order). */
+    bringForward() {
+        this.reorderStep('forward');
+    }
+    /** Move the selection one step toward the back (earlier in z-order). */
+    sendBackward() {
+        this.reorderStep('backward');
+    }
+    reorderStep(dir) {
+        if (this.selection.size === 0)
+            return;
+        const order = this.nodes.map((n) => n.id);
+        const next = orderStep(order, this.selection, dir);
+        if (next.every((id, i) => id === order[i]))
+            return; // no movement
+        const byId = new Map(this.nodes.map((n) => [n.id, n]));
+        this.nodes = next.map((id) => byId.get(id));
+        this.commit();
+        this.requestRender();
+    }
+    // ================================================================ align / distribute
+    /** Align every selected node to the selection's shared edge or center. */
+    alignSelection(mode) {
+        const selected = this.selectedNodes();
+        if (selected.length < 2)
+            return;
+        const deltas = alignDeltas(selected.map(getAABB), mode);
+        selected.forEach((n, i) => translateNode(n, deltas[i].x, deltas[i].y));
+        this.commit();
+        this.requestRender();
+    }
+    /** Spread the selection so gaps between consecutive nodes are equal. */
+    distributeSelection(axis) {
+        const selected = this.selectedNodes();
+        if (selected.length < 3)
+            return;
+        const deltas = distributeDeltas(selected.map(getAABB), axis);
+        selected.forEach((n, i) => translateNode(n, deltas[i].x, deltas[i].y));
+        this.commit();
+        this.requestRender();
     }
     // ================================================================ flip / lock
     flipSelection(axis) {

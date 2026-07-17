@@ -35,6 +35,8 @@ and a server route that only builds scenes never touches DOM code.
 - 🔄 **Rotation** — rotation handle above the selection (Shift = 15° snap); multi-selection orbits around the common pivot; rotation-aware hit testing & AABB
 - 🧽 **Eraser** — drag to delete objects
 - 🗂 Grouping — group / ungroup (group rotation is baked into children on ungroup)
+- 📐 **Align & distribute** — left/right/h-center, top/bottom/v-center align + even horizontal/vertical distribution (works on rotated/skewed nodes via world AABBs)
+- 🔢 z-order — to front/back + one step forward/backward (contiguous selection blocks move together)
 - ↔️ Flip horizontal / vertical, 🔒 lock / unlock, 📋 copy / cut / paste, arrow-key nudge (Shift = 10px)
 - ↩️ Undo / redo — snapshot history
 
@@ -231,7 +233,8 @@ implementation of that pattern.
 | `deleteSelection()` / `duplicateSelection()` | edit |
 | `copySelection()` / `cutSelection()` / `paste()` | clipboard |
 | `group()` / `ungroup()` | grouping |
-| `bringToFront()` / `sendToBack()` | z-order |
+| `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
+| `alignSelection(mode)` / `distributeSelection(axis)` | align / distribute |
 | `flipSelection('h' \| 'v')` | mirror |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | lock |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |

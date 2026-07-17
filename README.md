@@ -35,6 +35,8 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 - 🔄 **회전** — 선택 영역 위의 회전 핸들(Shift = 15° 스냅); 다중 선택 시 공통 피벗을 중심으로 회전; 회전을 고려한 히트 테스트 & AABB
 - 🧽 **지우개** — 드래그해서 객체 삭제
 - 🗂 그룹핑 — 그룹 / 그룹 해제 (그룹 해제 시 그룹 회전값이 자식 노드에 반영됨)
+- 📐 **정렬 & 분배** — 좌/우/수평중앙, 상/하/수직중앙 정렬과 가로·세로 균등 분배 (회전·스큐 노드도 world AABB 기준)
+- 🔢 z-order — 맨 앞/맨 뒤 + 한 칸씩 앞/뒤로 이동 (연속 선택 블록은 함께 이동)
 - ↔️ 좌우/상하 반전, 🔒 잠금 / 잠금 해제, 📋 복사 / 잘라내기 / 붙여넣기, 방향키 이동 (Shift = 10px)
 - ↩️ 실행 취소 / 다시 실행 — 스냅샷 히스토리
 
@@ -230,7 +232,8 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `deleteSelection()` / `duplicateSelection()` | 편집 |
 | `copySelection()` / `cutSelection()` / `paste()` | 클립보드 |
 | `group()` / `ungroup()` | 그룹핑 |
-| `bringToFront()` / `sendToBack()` | z-order |
+| `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
+| `alignSelection(mode)` / `distributeSelection(axis)` | 정렬 / 분배 |
 | `flipSelection('h' \| 'v')` | 반전 |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | 잠금 |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | 텍스트 |

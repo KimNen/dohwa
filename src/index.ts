@@ -24,7 +24,11 @@ export {
   hasTransform,
   cropFullRect,
   cropFromRects,
+  alignDeltas,
+  distributeDeltas,
+  orderStep,
 } from './geometry/geometry.js';
+export type { AlignMode, DistributeAxis } from './geometry/geometry.js';
 
 // ---------------------------------------------------------------- affine matrix (DOM-free)
 export {

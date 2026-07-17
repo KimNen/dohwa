@@ -19,6 +19,8 @@ export class DohwaStore {
                 return false;
             if (key === 'crop')
                 return s.canCrop;
+            if (meta.minSelection)
+                return s.selectionCount >= meta.minSelection;
             if (meta.needsMultiSelection)
                 return s.selectionCount >= 2;
             if (meta.needsSelection)
@@ -52,6 +54,36 @@ export class DohwaStore {
                     break;
                 case 'sendToBack':
                     app.sendToBack();
+                    break;
+                case 'bringForward':
+                    app.bringForward();
+                    break;
+                case 'sendBackward':
+                    app.sendBackward();
+                    break;
+                case 'alignLeft':
+                    app.alignSelection('left');
+                    break;
+                case 'alignHCenter':
+                    app.alignSelection('hcenter');
+                    break;
+                case 'alignRight':
+                    app.alignSelection('right');
+                    break;
+                case 'alignTop':
+                    app.alignSelection('top');
+                    break;
+                case 'alignVCenter':
+                    app.alignSelection('vcenter');
+                    break;
+                case 'alignBottom':
+                    app.alignSelection('bottom');
+                    break;
+                case 'distributeH':
+                    app.distributeSelection('horizontal');
+                    break;
+                case 'distributeV':
+                    app.distributeSelection('vertical');
                     break;
                 case 'flipH':
                     app.flipSelection('h');

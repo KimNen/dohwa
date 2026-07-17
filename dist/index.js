@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------- engine
 export { Dohwa } from './core/dohwa.js';
 // ---------------------------------------------------------------- pure geometry (DOM-free)
-export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, cropFullRect, cropFromRects, } from './geometry/geometry.js';
+export { getBBox, rawBBox, getAABB, unionBBox, bboxCenter, bboxCorners, bboxIntersects, pointInBBox, translateNode, scaleNodeInto, flipNode, hitTestNode, rotatePoint, distToSegment, diamondPoints, trianglePoints, nodeMatrix, toLocalPoint, hasTransform, cropFullRect, cropFromRects, alignDeltas, distributeDeltas, orderStep, } from './geometry/geometry.js';
 // ---------------------------------------------------------------- affine matrix (DOM-free)
 export { IDENTITY, multiply, composeAll, compose, translation, scaling, rotation, skewing, applyToPoint, invert, determinant, isIdentity, decompose, toCSS, transformBBox, } from './geometry/matrix.js';
 // ---------------------------------------------------------------- spatial index (DOM-free)

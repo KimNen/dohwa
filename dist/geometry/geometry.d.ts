@@ -46,6 +46,27 @@ export declare function translateNode(node: DohwaNode, dx: number, dy: number): 
 export declare function scaleNodeInto(node: DohwaNode, from: BBox, to: BBox): void;
 /** Mirror a node across a vertical (axis='h') or horizontal (axis='v') line. */
 export declare function flipNode(node: DohwaNode, axis: 'h' | 'v', center: Point): void;
+export type AlignMode = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+export type DistributeAxis = 'horizontal' | 'vertical';
+/**
+ * Per-box translation deltas that align every box to the selection's shared
+ * edge/center. Pure: takes world AABBs, returns one {x,y} delta per box in the
+ * same order. A single box (or empty) yields zero deltas.
+ */
+export declare function alignDeltas(boxes: BBox[], mode: AlignMode): Point[];
+/**
+ * Per-box translation deltas that spread boxes so the GAPS between consecutive
+ * boxes are equal (Figma's "distribute spacing"). The extreme boxes stay put;
+ * only the in-between ones move. Fewer than 3 boxes yields zero deltas.
+ */
+export declare function distributeDeltas(boxes: BBox[], axis: DistributeAxis): Point[];
+/**
+ * Move the selected entries of an ordered id list one step toward the front
+ * (`forward`, i.e. later in the array) or back (`backward`). A contiguous run
+ * of selected ids moves together and preserves its internal order. Pure: does
+ * not mutate the input, returns a new array.
+ */
+export declare function orderStep(order: string[], selected: ReadonlySet<string>, dir: 'forward' | 'backward'): string[];
 /**
  * The rect the FULL (uncropped) image would occupy, given the node's visible
  * rect `box` and its crop window. This is where the crop editor draws the
