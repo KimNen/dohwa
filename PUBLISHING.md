@@ -133,31 +133,49 @@ dohwa is pre-1.0, so the rules are looser, but be consistent:
 `Refact:`로 시작했더라도 export 이름이 바뀌었다면 그건 `Break:`입니다.
 프리픽스는 그 판단을 기록하는 수단이지, 판단 자체를 대신하지 않습니다.
 
+### 버전은 package.json이 기준입니다
+
+이 저장소는 **`package.json`의 `version`이 곧 현재 버전**입니다. 기능이나 수정을
+넣을 때 그 커밋에서 **직접 올리고**, 같은 커밋에서 [CHANGELOG.md](./CHANGELOG.md)의
+`## [Unreleased]`에 항목을 추가합니다. 그래서 `package.json`은 *아직 배포되지 않은*
+진행 중인 버전을 가리킵니다 (데모가 이 값을 주입하므로 `npm run demo`에 그대로
+반영됩니다).
+
+한 버전에 여러 커밋이 쌓이는 게 정상입니다. 이미 0.5.0으로 올려둔 상태에서 `Feat:`
+커밋이 또 들어와도 0.6.0으로 올리지 마세요 — **아직 0.5.0을 내보내지 않았다면 그
+기능도 0.5.0의 일부**입니다. 범프는 "이번에 내보낼 버전이 무엇인가"를 정하는
+것이지 커밋 수를 세는 게 아닙니다.
+
+> **`npm version`은 쓰지 마세요.** 그 명령은 package.json이 *마지막으로 배포된*
+> 버전을 가리킨다고 전제하고 한 단계 더 올립니다. 여기서는 이미 목표 버전으로
+> 올려둔 상태라 0.5.0에서 `npm version minor`를 돌리면 0.6.0으로 튑니다.
+> git 태그도 쓰지 않습니다 — 버전 구분은 package.json 하나로 합니다.
+
 ### 릴리스할 때
 
-버전을 올리기 전에 [CHANGELOG.md](./CHANGELOG.md)의 `Unreleased` 항목을
-새 버전 번호로 옮기세요. 그다음 툴링이 package.json 범프와 git 태그를
-맞춰줍니다:
-
 ```bash
-npm version patch    # bumps package.json + creates a git tag v0.4.1
-git push --follow-tags
+# 1. CHANGELOG의 [Unreleased]를 이번 버전 번호로 옮기고 날짜를 적는다
+#    ## [Unreleased]  ->  ## [0.5.0] - 2026-07-17
+#    (그 위에 새 빈 [Unreleased]를 만들어 둔다)
+
+# 2. package.json version이 그 번호와 같은지 확인
+grep '"version"' package.json
+
+# 3. 검증 + 배포 (prepublishOnly가 typecheck·build·test를 모두 돌린다)
 npm publish
 ```
 
-`npm version` refuses to run on a dirty tree, which is a feature — it forces
-version bumps to be their own clean commit.
+배포 후 다음 기능을 넣을 때, 그 커밋에서 `package.json`을 다음 번호로 올리며
+새 주기를 시작합니다.
 
 ### Pre-releases
 
-To publish a preview without it becoming the default `latest`:
+`latest`(그냥 `npm i dohwa`로 받는 것)를 건드리지 않고 미리보기를 내보내려면,
+`package.json`을 직접 `0.5.0-beta.0`처럼 적고:
 
 ```bash
-npm version prerelease --preid beta   # 0.5.0-beta.0
-npm publish --tag beta                 # installs only via `npm i dohwa@beta`
+npm publish --tag beta    # npm i dohwa@beta 로만 설치됨
 ```
-
-`latest` (what `npm i dohwa` grabs) stays on your last stable release.
 
 ---
 
@@ -175,16 +193,20 @@ npm publish --tag beta                 # installs only via `npm i dohwa@beta`
 
 ## 5. Recommended: automate with GitHub Actions
 
-Manual publishing is error-prone. A release workflow publishes on every git tag
-using an npm **automation token** (Settings → Access Tokens → Granular →
-Automation, which bypasses 2FA for CI):
+Manual publishing is error-prone. A release workflow can publish for you using
+an npm **automation token** (Settings → Access Tokens → Granular → Automation,
+which bypasses 2FA for CI).
+
+이 저장소는 git 태그를 쓰지 않으므로, 태그 push 대신 **수동 실행
+(`workflow_dispatch`)** 으로 트리거합니다 — Actions 탭에서 버튼을 눌러 배포하고,
+배포되는 버전은 `package.json`에 적힌 값입니다. (나중에 태그를 도입하기로
+바꾸면 `on: push: tags: ['v*']`로 바꾸면 됩니다.)
 
 ```yaml
 # .github/workflows/release.yml
 name: release
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:          # Actions 탭에서 수동 실행
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -208,12 +230,8 @@ jobs:
 ```
 
 Add `NPM_TOKEN` (the automation token) to the repo's Actions secrets. Then
-releasing is just:
-
-```bash
-npm version minor
-git push --follow-tags     # the tag triggers the workflow; CI publishes
-```
+releasing is: package.json 버전과 CHANGELOG를 정리해 push하고, Actions 탭에서
+release 워크플로를 **Run workflow**로 실행하면 CI가 배포합니다.
 
 `--provenance` attaches a signed, verifiable link from the npm package back to
 the exact GitHub commit + workflow that built it — a strong supply-chain signal
@@ -232,8 +250,10 @@ npm view dohwa                 # confirm name is free
 # every release
 npm run build && npm test
 npm pack --dry-run             # verify tarball contents
-# CHANGELOG.md: Unreleased -> the new version number
-npm version patch|minor|major  # bump + tag  (see "커밋 프리픽스 -> 범프")
+# package.json version은 기능 커밋에서 이미 올려둔 상태 — 여기서 또 올리지 않는다
+# (npm version 금지: 0.5.0에서 돌리면 0.6.0으로 튄다)
+grep '"version"' package.json  # 이번에 내보낼 번호가 맞는지 확인
+# CHANGELOG.md: [Unreleased] -> ## [그 번호] - 날짜, 위에 새 [Unreleased] 추가
 npm publish                    # or: pnpm publish
-git push --follow-tags
+git push
 ```
