@@ -24,6 +24,8 @@ export class DohwaStore {
                 return false;
             if (key === 'crop')
                 return s.canCrop;
+            if (key === 'extractCrop')
+                return s.isCropping;
             if (meta.minSelection)
                 return s.selectionCount >= meta.minSelection;
             if (meta.needsMultiSelection)
@@ -98,6 +100,9 @@ export class DohwaStore {
                     break;
                 case 'crop':
                     app.startCrop();
+                    break;
+                case 'extractCrop':
+                    app.extractCrop();
                     break;
                 case 'lock':
                     app.lockSelection();

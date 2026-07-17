@@ -103,12 +103,25 @@ export declare class Dohwa {
     /**
      * Enter interactive crop mode on the selected image (also reachable by
      * double-clicking an image). Drag the handles to trim, drag inside to
-     * slide the image behind the window; Enter applies, Esc cancels.
+     * slide the image behind the window; Enter applies, Shift+Enter lifts the
+     * window out as a separate piece (see extractCrop), Esc cancels.
      */
     startCrop(): boolean;
     /** Commit the pending crop and leave crop mode. No-op when not cropping. */
     applyCrop(): void;
     /** Discard the pending crop, restoring the image as it was. */
+    /** True while the crop editor is open, so the window can be lifted out. */
+    canExtractCrop(): boolean;
+    /**
+     * Finish cropping by lifting the crop window out as a NEW image piece and
+     * leaving the source untouched — cut a piece off and drag it away.
+     *
+     * The piece is the same `src` carrying its own crop window, so nothing is
+     * copied or rasterized: it stays a real image node (vector-clean through
+     * exportSVG) and the original keeps every pixel. Returns the new node, or
+     * null when the crop editor isn't open.
+     */
+    extractCrop(): ImageNode | null;
     cancelCrop(): void;
     /** Set (or clear, with null) an image's crop window programmatically. */
     setImageCrop(id: string, crop: CropRect | null): boolean;

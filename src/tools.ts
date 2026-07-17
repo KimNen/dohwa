@@ -204,6 +204,7 @@ export type ActionKey =
   | 'flipH'
   | 'flipV'
   | 'crop'
+  | 'extractCrop'
   | 'lock'
   | 'duplicate'
   | 'copy'
@@ -255,6 +256,12 @@ export const ACTION_METAS: readonly ActionMeta[] = [
     label: 'Crop image',
     needsSelection: true,
     icon: ['M6 2v14a2 2 0 0 0 2 2h14', 'M18 22V8a2 2 0 0 0-2-2H2'],
+  },
+  {
+    key: 'extractCrop',
+    label: 'Lift crop out as a piece',
+    shortcut: 'Shift+Enter',
+    icon: ['M6 2v14a2 2 0 0 0 2 2h14', 'M18 22V8a2 2 0 0 0-2-2H2', 'M14 10l6-6', 'M20 4v5h-5'],
   },
   { key: 'lock', label: 'Lock', needsSelection: true, icon: ['M5 11h14v9H5z', 'M8 11V7a4 4 0 0 1 8 0v4'] },
   { key: 'duplicate', label: 'Duplicate', shortcut: 'Ctrl+D', needsSelection: true },
@@ -359,6 +366,7 @@ export const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: 'textDone', label: 'Finish editing', keys: ['Ctrl', 'Enter'] },
       { key: 'cropStart', label: 'Crop image', keys: ['Double-click'] },
       { key: 'cropApply', label: 'Apply crop', keys: ['Enter'] },
+      { key: 'cropExtract', label: 'Lift crop out as a piece', keys: ['Shift', 'Enter'] },
       { key: 'cropCancel', label: 'Cancel crop', keys: ['Esc'] },
     ],
   },

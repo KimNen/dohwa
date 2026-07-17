@@ -540,7 +540,8 @@ export class Dohwa {
     /**
      * Enter interactive crop mode on the selected image (also reachable by
      * double-clicking an image). Drag the handles to trim, drag inside to
-     * slide the image behind the window; Enter applies, Esc cancels.
+     * slide the image behind the window; Enter applies, Shift+Enter lifts the
+     * window out as a separate piece (see extractCrop), Esc cancels.
      */
     startCrop() {
         if (this.cropping)
@@ -572,6 +573,45 @@ export class Dohwa {
         this.requestRender();
     }
     /** Discard the pending crop, restoring the image as it was. */
+    /** True while the crop editor is open, so the window can be lifted out. */
+    canExtractCrop() {
+        return this.cropping !== null;
+    }
+    /**
+     * Finish cropping by lifting the crop window out as a NEW image piece and
+     * leaving the source untouched — cut a piece off and drag it away.
+     *
+     * The piece is the same `src` carrying its own crop window, so nothing is
+     * copied or rasterized: it stays a real image node (vector-clean through
+     * exportSVG) and the original keeps every pixel. Returns the new node, or
+     * null when the crop editor isn't open.
+     */
+    extractCrop() {
+        if (!this.cropping)
+            return null;
+        const { node, original } = this.cropping;
+        const piece = deepClone(node);
+        piece.id = genId();
+        const c = piece.crop;
+        // a window covering (almost) everything isn't a crop — the piece is a copy
+        if (c && c.x <= 0.001 && c.y <= 0.001 && c.w >= 0.998 && c.h >= 0.998) {
+            delete piece.crop;
+        }
+        this.cropping = null;
+        this.mode = { kind: 'none' };
+        // put the source back: extracting a piece must not alter the original
+        Object.assign(node, deepClone(original));
+        if (original.crop === undefined)
+            delete node.crop;
+        this.nodes.push(piece);
+        this.selection = new Set([piece.id]);
+        this.invalidateIndex();
+        this.emitSelection();
+        this.commit();
+        this.emitter.emit('crop', null);
+        this.requestRender();
+        return piece;
+    }
     cancelCrop() {
         if (!this.cropping)
             return;
@@ -1837,11 +1877,15 @@ export class Dohwa {
         if (this.replaying || this.isEditableTarget(e))
             return;
         const mod = e.ctrlKey || e.metaKey;
-        // crop editor owns the keyboard: Enter applies, Esc cancels
+        // crop editor owns the keyboard: Enter applies, Shift+Enter lifts the
+        // window out as a separate piece, Esc cancels
         if (this.cropping) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                this.applyCrop();
+                if (e.shiftKey)
+                    this.extractCrop();
+                else
+                    this.applyCrop();
             }
             else if (e.key === 'Escape') {
                 e.preventDefault();

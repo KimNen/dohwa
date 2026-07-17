@@ -90,6 +90,14 @@ ok('variants have no own shortcut slot', getToolVariants('arrow').every((m) => !
 
 ok('crop action meta', getActionMeta('crop').needsSelection === true && getActionMeta('crop').icon.length > 0);
 
+// 조각 떼내기: 크롭 창을 새 노드로 들어올리는 액션 (활성화는 isCropping이 결정하므로
+// needsSelection에 기대지 않는다 — canRun 쪽에서 처리)
+const extractMeta = getActionMeta('extractCrop');
+ok('extractCrop action meta', extractMeta && extractMeta.icon.length > 0 && extractMeta.shortcut === 'Shift+Enter');
+ok('extractCrop is not gated by selection', extractMeta.needsSelection === undefined);
+ok('crop shortcut section lists extract', SHORTCUT_SECTIONS.some((s) =>
+  s.items.some((i) => i.key === 'cropExtract' && i.keys.join('+') === 'Shift+Enter')));
+
 const cropped = image({ x: 0, y: 0, w: 10, h: 10, src: 'x', crop: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 } });
 ok('image factory keeps crop', cropped.crop && cropped.crop.w === 0.5);
 ok('cropped image scene validates', validateScene(scene([cropped, dbl])).valid === true);

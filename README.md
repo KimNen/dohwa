@@ -29,6 +29,7 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 - ⬛ 도형 — 사각형(`rx` 모서리 둥글기), 타원, 다이아몬드, 삼각형, 직선, **화살표 · 양방향 화살표** (Shift = 정사각형 / 정원 / 45° 스냅, `A`를 한 번 더 누르면 양방향 전환)
 - 🔤 **텍스트** — 클릭해서 생성, 더블클릭으로 인라인 편집(플로팅 텍스트에어리어), 여러 줄, 리사이즈 시 폰트 크기 자동 조정
 - 🖼 이미지 — URL / `File` / 드래그 앤 드롭, 좌우·상하 반전, ✂️ **잘라내기(크롭)** — 더블클릭으로 진입, 핸들 드래그로 자르고 안쪽 드래그로 이미지 이동, Enter 적용 / Esc 취소 (원본은 유지되어 언제든 되돌릴 수 있음)
+- 🧩 **조각 떼내기** — 크롭 창을 `Shift+Enter`로 **새 이미지 조각**으로 들어올려 따로 끌고 다니기. 원본은 그대로 남고, 조각은 픽셀 복사 없이 crop 메타데이터만 다른 진짜 이미지 노드 (한 사진에서 여러 조각을 떼어 콜라주 가능)
 
 **편집**
 - 🧲 선택 — 클릭, Shift-클릭, 마키(드래그 선택); 이동, 8-핸들 리사이즈 (Shift = 비율 유지)
@@ -270,7 +271,8 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | 텍스트 |
 | `addImage(src)` / `addImageFromFile(file)` | 이미지 |
 | `startCrop()` / `applyCrop()` / `cancelCrop()` | 인터랙티브 이미지 크롭 (이미지 더블클릭으로도 진입) |
-| `canCrop()` / `isCropping()` / `getCroppingId()` | 크롭 상태 |
+| `canCrop()` / `isCropping()` / `getCroppingId()` / `canExtractCrop()` | 크롭 상태 |
+| `extractCrop()` | 크롭 창을 새 이미지 조각으로 떼어냄 (원본 유지) |
 | `setImageCrop(id, crop \| null)` | 프로그래밍 방식 크롭 — `crop`은 원본 대비 0~1 비율 `{x, y, w, h}` |
 | `undo()` / `redo()` / `getHistoryState()` | 히스토리 |
 | `replay(opts?)` / `getTimeline()` / `isReplaying()` | 드로잉 리플레이 |
@@ -287,7 +289,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 `V` 선택 · `P` 펜 · `R` 사각형 · `O` 타원 · `D` 다이아몬드 · `L` 직선 · `A` 화살표 (한 번 더 = 양방향) · `T` 텍스트 · `E` 지우개 · `H` 팬 · `Space` 임시 팬 ·
 `Del` 삭제 · `Ctrl+Z / Ctrl+Shift+Z` 실행 취소/다시 실행 · `Ctrl+G / Ctrl+Shift+G` 그룹/그룹 해제 ·
 `Ctrl+C / X / V` 복사/잘라내기/붙여넣기 · `Ctrl+D` 복제 · `Ctrl+A` 전체 선택 · `Esc` 선택 해제 · `←↑→↓` 이동 (Shift = 10px) ·
-크롭 중 `Enter` 적용 / `Esc` 취소
+크롭 중 `Enter` 적용 / `Shift+Enter` 조각 떼내기 / `Esc` 취소
 
 전체 목록은 `dohwa/ui`의 **`SHORTCUT_SECTIONS`**로 export됩니다 — 섹션·라벨·키 조합이 담긴
 데이터라서 단축키 도움말 화면을 그대로 그릴 수 있습니다 (데모의 `?` 팝업이 이걸로 만들어졌습니다).

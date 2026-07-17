@@ -29,6 +29,7 @@ and a server route that only builds scenes never touches DOM code.
 - ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow · double-headed arrow** (Shift = square / circle / 45° snap; press `A` again to toggle both heads)
 - 🔤 **Text** — click to create, double-click to edit inline (floating textarea), multiline, font scaling on resize
 - 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip, ✂️ **cropping** — double-click to enter, drag handles to trim and drag inside to slide the image, Enter applies / Esc cancels (non-destructive: the source is kept)
+- 🧩 **Lift out a piece** — `Shift+Enter` lifts the crop window out as a **new image piece** you can drag away, leaving the original untouched. The piece is a real image node sharing the same `src` with its own crop window — no pixels copied (cut several pieces from one photo and collage them)
 
 **Editing**
 - 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)
@@ -272,7 +273,8 @@ implementation of that pattern.
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |
 | `addImage(src)` / `addImageFromFile(file)` | images |
 | `startCrop()` / `applyCrop()` / `cancelCrop()` | interactive image crop (also: double-click an image) |
-| `canCrop()` / `isCropping()` / `getCroppingId()` | crop state |
+| `canCrop()` / `isCropping()` / `getCroppingId()` / `canExtractCrop()` | crop state |
+| `extractCrop()` | lift the crop window out as a new image piece (original kept) |
 | `setImageCrop(id, crop \| null)` | programmatic crop — `crop` is `{x, y, w, h}` in 0..1 fractions of the source |
 | `undo()` / `redo()` / `getHistoryState()` | history |
 | `replay(opts?)` / `getTimeline()` / `isReplaying()` | drawing replay |
@@ -289,7 +291,7 @@ implementation of that pattern.
 `V` select · `P` pen · `R` rect · `O` ellipse · `D` diamond · `L` line · `A` arrow (again = both heads) · `T` text · `E` eraser · `H` pan · `Space` temp-pan ·
 `Del` delete · `Ctrl+Z / Ctrl+Shift+Z` undo/redo · `Ctrl+G / Ctrl+Shift+G` group/ungroup ·
 `Ctrl+C / X / V` copy/cut/paste · `Ctrl+D` duplicate · `Ctrl+A` select all · `Esc` deselect · `←↑→↓` nudge (Shift = 10px) ·
-while cropping: `Enter` apply / `Esc` cancel
+while cropping: `Enter` apply / `Shift+Enter` lift out as a piece / `Esc` cancel
 
 The complete map is exported as **`SHORTCUT_SECTIONS`** from `dohwa/ui` — sections, labels and
 key chips as data, ready to render a shortcuts help screen (the demo's `?` popup is built from it).

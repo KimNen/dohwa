@@ -91,6 +91,7 @@ export class DohwaStore {
     const s = this.state;
     if (s.isReplaying) return false;
     if (key === 'crop') return s.canCrop;
+    if (key === 'extractCrop') return s.isCropping;
     if (meta.minSelection) return s.selectionCount >= meta.minSelection;
     if (meta.needsMultiSelection) return s.selectionCount >= 2;
     if (meta.needsSelection) return s.selectionCount >= 1;
@@ -123,6 +124,7 @@ export class DohwaStore {
       case 'flipH': app.flipSelection('h'); break;
       case 'flipV': app.flipSelection('v'); break;
       case 'crop': app.startCrop(); break;
+      case 'extractCrop': app.extractCrop(); break;
       case 'lock': app.lockSelection(); break;
       case 'duplicate': app.duplicateSelection(); break;
       case 'copy': app.copySelection(); break;
