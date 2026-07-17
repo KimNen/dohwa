@@ -347,6 +347,8 @@ export const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: 'snapAngle', label: '45° snap (line / arrow)', keys: ['Shift', 'drag'] },
       { key: 'snapRatio', label: 'Keep aspect ratio (resize)', keys: ['Shift', 'drag'] },
       { key: 'snapRotate', label: '15° snap (rotate)', keys: ['Shift', 'drag'] },
+      { key: 'skew', label: 'Skew (edge handle)', keys: ['Ctrl', 'drag'] },
+      { key: 'snapBypass', label: 'Ignore object snapping (move)', keys: ['Alt', 'drag'] },
     ],
   },
   {

@@ -28,8 +28,9 @@ export {
   distributeDeltas,
   orderStep,
   snapMove,
+  skewFromEdgeDrag,
 } from './geometry/geometry.js';
-export type { AlignMode, DistributeAxis, SnapGuides, SnapResult } from './geometry/geometry.js';
+export type { AlignMode, DistributeAxis, SnapGuides, SnapResult, SkewEdge } from './geometry/geometry.js';
 
 // ---------------------------------------------------------------- affine matrix (DOM-free)
 export {

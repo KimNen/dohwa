@@ -372,6 +372,27 @@ export function distributeDeltas(boxes, axis) {
     return deltas;
 }
 /**
+ * The skew matrix produced by dragging a frame EDGE handle by `delta` (in the
+ * frame's local, unrotated space). Dragging a horizontal edge (n/s) sideways
+ * skews along X; a vertical edge (e/w) up/down skews along Y. The factor is
+ * derived so the grabbed edge tracks the pointer: the edge sits h/2 (or w/2)
+ * from the center, so shifting it by `delta` needs tan = 2·delta/size.
+ * Returned in local frame space — pivot it around the box center to apply.
+ */
+export function skewFromEdgeDrag(box, edge, delta) {
+    let tanX = 0;
+    let tanY = 0;
+    if (edge === 'n' && box.h > 0)
+        tanX = (-2 * delta.x) / box.h;
+    else if (edge === 's' && box.h > 0)
+        tanX = (2 * delta.x) / box.h;
+    else if (edge === 'w' && box.w > 0)
+        tanY = (-2 * delta.y) / box.w;
+    else if (edge === 'e' && box.w > 0)
+        tanY = (2 * delta.y) / box.w;
+    return [1, tanY, tanX, 1, 0, 0];
+}
+/**
  * Snap a moving box to nearby target boxes' edges and centers. Each axis snaps
  * independently to its single closest line within `threshold` (world units);
  * `guides` lists every target line that ends up coinciding, for drawing smart

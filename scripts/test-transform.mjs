@@ -1,4 +1,4 @@
-import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep, snapMove } from '../dist/geometry/geometry.js';
+import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep, snapMove, skewFromEdgeDrag } from '../dist/geometry/geometry.js';
 import { compose, composeAll, rotation, scaling, translation, applyToPoint, decompose } from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
@@ -147,4 +147,35 @@ ok('decompose node angle', close(decompose(rotNode.transform).angle, 0.6));
   ok('snap: beyond threshold does nothing', rf.dx === 0 && rf.dy === 0 && rf.guides.x.length === 0);
 
   ok('snap: no targets is a no-op', snapMove(near, [], 5).dx === 0);
+}
+
+// --- skewFromEdgeDrag: the grabbed edge must track the pointer
+{
+  const box = { x: 0, y: 0, w: 100, h: 40 }; // center (50,20)
+  const center = { x: 50, y: 20 };
+  // pivot a local-frame matrix around the box center, like nodeMatrix does
+  const pivoted = (m) => composeAll([translation(center.x, center.y), m, translation(-center.x, -center.y)]);
+
+  // drag the TOP edge right by 20: the top edge midpoint must move right by 20
+  const mN = pivoted(skewFromEdgeDrag(box, 'n', { x: 20, y: 0 }));
+  const topMid = applyToPoint(mN, { x: 50, y: 0 });
+  ok('skew n: top edge follows drag', close(topMid.x, 70) && close(topMid.y, 0));
+  // ...and the bottom edge moves the opposite way (skew pivots on center)
+  const botMid = applyToPoint(mN, { x: 50, y: 40 });
+  ok('skew n: bottom edge counter-moves', close(botMid.x, 30));
+
+  // drag the EAST edge down by 10: right edge midpoint moves down by 10
+  const mE = pivoted(skewFromEdgeDrag(box, 'e', { x: 0, y: 10 }));
+  const rightMid = applyToPoint(mE, { x: 100, y: 20 });
+  ok('skew e: right edge follows drag', close(rightMid.y, 30) && close(rightMid.x, 100));
+
+  // a skew never moves the center, and never changes area (det stays 1)
+  ok('skew keeps center fixed', (() => {
+    const c = applyToPoint(mN, center);
+    return close(c.x, center.x) && close(c.y, center.y);
+  })());
+  ok('skew preserves area (det=1)', close(mN[0] * mN[3] - mN[1] * mN[2], 1));
+
+  ok('skew: zero drag is identity', skewFromEdgeDrag(box, 'n', { x: 0, y: 0 })[2] === 0);
+  ok('skew: degenerate box is safe', skewFromEdgeDrag({ x:0,y:0,w:0,h:0 }, 'n', { x: 5, y: 0 })[2] === 0);
 }

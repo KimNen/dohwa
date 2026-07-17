@@ -60,6 +60,17 @@ export declare function alignDeltas(boxes: BBox[], mode: AlignMode): Point[];
  * only the in-between ones move. Fewer than 3 boxes yields zero deltas.
  */
 export declare function distributeDeltas(boxes: BBox[], axis: DistributeAxis): Point[];
+/** Which edge of the selection frame a skew gesture grabbed. */
+export type SkewEdge = 'n' | 's' | 'e' | 'w';
+/**
+ * The skew matrix produced by dragging a frame EDGE handle by `delta` (in the
+ * frame's local, unrotated space). Dragging a horizontal edge (n/s) sideways
+ * skews along X; a vertical edge (e/w) up/down skews along Y. The factor is
+ * derived so the grabbed edge tracks the pointer: the edge sits h/2 (or w/2)
+ * from the center, so shifting it by `delta` needs tan = 2·delta/size.
+ * Returned in local frame space — pivot it around the box center to apply.
+ */
+export declare function skewFromEdgeDrag(box: BBox, edge: SkewEdge, delta: Point): Matrix;
 export interface SnapGuides {
     /** world x-coordinates for vertical guide lines */
     x: number[];

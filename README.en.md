@@ -33,6 +33,7 @@ and a server route that only builds scenes never touches DOM code.
 **Editing**
 - 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)
 - 🧭 **Object snapping & smart guides** — dragging snaps to other objects' edges/centers and draws alignment guides (hold Alt to bypass, `snap` option to disable)
+- 📏 **Free transform (skew)** — `Ctrl`/`Cmd`-drag an edge handle to skew (written straight into the matrix)
 - 🔄 **Rotation** — rotation handle above the selection (Shift = 15° snap); multi-selection orbits around the common pivot; rotation-aware hit testing & AABB
 - 🧽 **Eraser** — drag to delete objects
 - 🗂 Grouping — group / ungroup (group rotation is baked into children on ungroup)
@@ -238,6 +239,7 @@ implementation of that pattern.
 | `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
 | `alignSelection(mode)` / `distributeSelection(axis)` | align / distribute |
 | `isSnapEnabled()` / `setSnapEnabled(on)` | toggle object snapping |
+| `skewSelection(x, y?)` / `transformSelection(m, pivot?)` | free transform (apply a matrix) |
 | `flipSelection('h' \| 'v')` | mirror |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | lock |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |
@@ -320,7 +322,7 @@ npm test            # 125 assertions across matrix, geometry, spatial, cache, ui
 - [ ] `@dohwa/react` bindings package (thin wrapper over `dohwa/ui`)
 - [x] ~~Matrix transform model (non-uniform scale, skew, nested transforms)~~ — v0.4
 - [x] ~~Spatial index + viewport culling for large scenes~~ — v0.4
-- [ ] Free-transform gestures (skew/corner handles) writing matrices from the UI
+- [x] ~~Free-transform gestures (skew/corner handles) writing matrices from the UI~~ — v0.5
 - [ ] Wire ObjectCache into the default render path (needs visual regression)
 - [ ] Layered canvases (static + interaction)
 - [ ] Rich text (per-character styling), pattern/gradient fills

@@ -1,5 +1,6 @@
 import type { CropRect, DohwaEvent, DohwaNode, DohwaOptions, ExportPNGOptions, ExportSVGOptions, HistoryState, ImageNode, Point, ReplayOptions, SceneJSON, Style, TextNode, Tool, Viewport } from '../types.js';
 import { type AlignMode, type DistributeAxis } from '../geometry/geometry.js';
+import { type Matrix } from '../geometry/matrix.js';
 export declare class Dohwa {
     readonly container: HTMLElement;
     readonly canvas: HTMLCanvasElement;
@@ -66,6 +67,19 @@ export declare class Dohwa {
     alignSelection(mode: AlignMode): void;
     /** Spread the selection so gaps between consecutive nodes are equal. */
     distributeSelection(axis: DistributeAxis): void;
+    /** A node's local (pre-pivot) transform: explicit matrix, else legacy rotation, else identity. */
+    private localMatrix;
+    /**
+     * Compose `m` onto the selection's transforms, pivoting around `pivot`.
+     * nodeMatrix() pivots each node on its OWN bbox center, so `m` is re-based
+     * per node: L' = T(pivot−c) · m · T(c−pivot) · L. Legacy `rotation` is folded
+     * into the resulting matrix.
+     */
+    private applyMatrixToSelection;
+    /** Apply an affine matrix to the selection, pivoting on the selection center. */
+    transformSelection(m: Matrix, pivot?: Point): void;
+    /** Skew the selection by the given angles (radians) around its center. */
+    skewSelection(skewX: number, skewY?: number): void;
     flipSelection(axis: 'h' | 'v'): void;
     lockSelection(): void;
     unlockAll(): void;
@@ -177,6 +191,8 @@ export declare class Dohwa {
     private hitTopmost;
     /** Which handle (if any) is under a screen point. */
     private handleAt;
+    /** Map a world point into the frame's local (unrotated) space. */
+    private toFrameLocal;
     private cloneSelection;
     private onPointerDown;
     /** Pointer-down routing while the crop editor is open. */

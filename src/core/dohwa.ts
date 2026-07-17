@@ -33,16 +33,27 @@ import {
   nodeMatrix,
   orderStep,
   pointInBBox,
+  rawBBox,
   rotatePoint,
   scaleNodeInto,
+  skewFromEdgeDrag,
   snapMove,
   translateNode,
   unionBBox,
   type AlignMode,
   type DistributeAxis,
+  type SkewEdge,
   type SnapGuides,
 } from '../geometry/geometry.js';
-import { isIdentity } from '../geometry/matrix.js';
+import {
+  IDENTITY,
+  isIdentity,
+  multiply,
+  rotation as rotationMatrix,
+  skewing,
+  translation,
+  type Matrix,
+} from '../geometry/matrix.js';
 import { LINE_HEIGHT, measureText, renderScene, type ImageCache } from '../render/render.js';
 import { sceneToSVG } from '../render/svg.js';
 import { Emitter, History } from './core.js';
@@ -84,6 +95,15 @@ type InteractionMode =
       startAngle: number;
       originals: Map<string, DohwaNode>;
     }
+  | {
+      kind: 'skew';
+      edge: SkewEdge;
+      from: BBox;
+      rotation: number;
+      center: Point;
+      start: Point;
+      originals: Map<string, DohwaNode>;
+    }
   | { kind: 'marquee'; start: Point; current: Point; base: string[] }
   | { kind: 'erase'; erased: boolean }
   | { kind: 'pan'; lastScreen: Point }
@@ -111,6 +131,9 @@ const HANDLES: ReadonlyArray<{ hx: number; hy: number; cursor: string }> = [
   { hx: 0, hy: 1, cursor: 'nesw-resize' },
   { hx: 0, hy: 0.5, cursor: 'ew-resize' },
 ];
+
+/** Edge (non-corner) handle index -> which frame edge it grabs, for skewing. */
+const EDGE_BY_HANDLE: Readonly<Record<number, SkewEdge>> = { 1: 'n', 3: 'e', 5: 's', 7: 'w' };
 
 const SELECTION_COLOR = '#4467ff';
 const SNAP_GUIDE_COLOR = '#f2318c';
@@ -422,6 +445,46 @@ export class Dohwa {
     selected.forEach((n, i) => translateNode(n, deltas[i].x, deltas[i].y));
     this.commit();
     this.requestRender();
+  }
+
+  // ================================================================ free transform
+
+  /** A node's local (pre-pivot) transform: explicit matrix, else legacy rotation, else identity. */
+  private localMatrix(node: DohwaNode): Matrix {
+    return node.transform ?? (node.rotation ? rotationMatrix(node.rotation) : IDENTITY);
+  }
+
+  /**
+   * Compose `m` onto the selection's transforms, pivoting around `pivot`.
+   * nodeMatrix() pivots each node on its OWN bbox center, so `m` is re-based
+   * per node: L' = T(pivot−c) · m · T(c−pivot) · L. Legacy `rotation` is folded
+   * into the resulting matrix.
+   */
+  private applyMatrixToSelection(m: Matrix, pivot: Point): void {
+    for (const n of this.selectedNodes()) {
+      const c = bboxCenter(rawBBox(n));
+      const rebased = multiply(
+        multiply(translation(pivot.x - c.x, pivot.y - c.y), m),
+        translation(c.x - pivot.x, c.y - pivot.y),
+      );
+      n.transform = multiply(rebased, this.localMatrix(n));
+      n.rotation = undefined;
+    }
+  }
+
+  /** Apply an affine matrix to the selection, pivoting on the selection center. */
+  transformSelection(m: Matrix, pivot?: Point): void {
+    const selected = this.selectedNodes();
+    if (selected.length === 0) return;
+    this.applyMatrixToSelection(m, pivot ?? bboxCenter(unionBBox(selected.map(getAABB))));
+    this.invalidateIndex();
+    this.commit();
+    this.requestRender();
+  }
+
+  /** Skew the selection by the given angles (radians) around its center. */
+  skewSelection(skewX: number, skewY = 0): void {
+    this.transformSelection(skewing(skewX, skewY));
   }
 
   // ================================================================ flip / lock
@@ -1368,6 +1431,11 @@ export class Dohwa {
     return null;
   }
 
+  /** Map a world point into the frame's local (unrotated) space. */
+  private toFrameLocal(world: Point, center: Point, rotation: number): Point {
+    return rotation === 0 ? world : rotatePoint(world, center, -rotation);
+  }
+
   private cloneSelection(): Map<string, DohwaNode> {
     const map = new Map<string, DohwaNode>();
     for (const n of this.selectedNodes()) map.set(n.id, deepClone(n));
@@ -1408,14 +1476,27 @@ export class Dohwa {
               originals: this.cloneSelection(),
             };
           } else {
-            this.mode = {
-              kind: 'resize',
-              handle: handle.index,
-              from: frame.box,
-              rotation: frame.rotation,
-              center: frame.center,
-              originals: this.cloneSelection(),
-            };
+            const edge = EDGE_BY_HANDLE[handle.index];
+            if (edge && (e.ctrlKey || e.metaKey)) {
+              this.mode = {
+                kind: 'skew',
+                edge,
+                from: frame.box,
+                rotation: frame.rotation,
+                center: frame.center,
+                start: this.toFrameLocal(world, frame.center, frame.rotation),
+                originals: this.cloneSelection(),
+              };
+            } else {
+              this.mode = {
+                kind: 'resize',
+                handle: handle.index,
+                from: frame.box,
+                rotation: frame.rotation,
+                center: frame.center,
+                originals: this.cloneSelection(),
+              };
+            }
           }
           return;
         }
@@ -1594,8 +1675,13 @@ export class Dohwa {
         if (this.tool === 'select') {
           const handle = this.handleAt(screen);
           if (handle?.kind === 'rotate') this.canvas.style.cursor = 'grab';
-          else if (handle?.kind === 'resize') this.canvas.style.cursor = HANDLES[handle.index].cursor;
-          else this.canvas.style.cursor = this.hitTopmost(world) ? 'move' : 'default';
+          else if (handle?.kind === 'resize') {
+            const edge = EDGE_BY_HANDLE[handle.index];
+            const willSkew = edge && (e.ctrlKey || e.metaKey);
+            this.canvas.style.cursor = willSkew
+              ? edge === 'n' || edge === 's' ? 'ew-resize' : 'ns-resize'
+              : HANDLES[handle.index].cursor;
+          } else this.canvas.style.cursor = this.hitTopmost(world) ? 'move' : 'default';
         }
         return;
       }
@@ -1711,6 +1797,25 @@ export class Dohwa {
           scaleNodeInto(fresh, from, to);
           Object.assign(n, fresh);
         }
+        this.requestRender();
+        return;
+      }
+      case 'skew': {
+        const local = this.toFrameLocal(world, mode.center, mode.rotation);
+        const delta = { x: local.x - mode.start.x, y: local.y - mode.start.y };
+        const aLocal = skewFromEdgeDrag(mode.from, mode.edge, delta);
+        // the drag is felt in the frame's local space; lift it into world space
+        const a =
+          mode.rotation === 0
+            ? aLocal
+            : multiply(multiply(rotationMatrix(mode.rotation), aLocal), rotationMatrix(-mode.rotation));
+        // skew is absolute from the drag start: restore, then apply once
+        for (const n of this.selectedNodes()) {
+          const original = mode.originals.get(n.id);
+          if (original) Object.assign(n, deepClone(original));
+        }
+        this.applyMatrixToSelection(a, mode.center);
+        this.invalidateIndex();
         this.requestRender();
         return;
       }
@@ -1843,6 +1948,7 @@ export class Dohwa {
         break;
       case 'resize':
       case 'rotate':
+      case 'skew':
         this.commit();
         break;
       case 'erase':

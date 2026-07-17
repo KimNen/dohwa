@@ -33,6 +33,7 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 **편집**
 - 🧲 선택 — 클릭, Shift-클릭, 마키(드래그 선택); 이동, 8-핸들 리사이즈 (Shift = 비율 유지)
 - 🧭 **객체 스냅 & 스마트 가이드** — 드래그 시 다른 객체의 모서리·중심에 달라붙고 가이드선 표시 (Alt로 일시 해제, `snap` 옵션으로 끄기)
+- 📏 **자유 변형(스큐)** — 모서리 중앙 핸들을 `Ctrl`/`Cmd`로 드래그해 기울이기 (행렬에 직접 기록)
 - 🔄 **회전** — 선택 영역 위의 회전 핸들(Shift = 15° 스냅); 다중 선택 시 공통 피벗을 중심으로 회전; 회전을 고려한 히트 테스트 & AABB
 - 🧽 **지우개** — 드래그해서 객체 삭제
 - 🗂 그룹핑 — 그룹 / 그룹 해제 (그룹 해제 시 그룹 회전값이 자식 노드에 반영됨)
@@ -237,6 +238,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
 | `alignSelection(mode)` / `distributeSelection(axis)` | 정렬 / 분배 |
 | `isSnapEnabled()` / `setSnapEnabled(on)` | 객체 스냅 토글 |
+| `skewSelection(x, y?)` / `transformSelection(m, pivot?)` | 자유 변형 (행렬 직접 적용) |
 | `flipSelection('h' \| 'v')` | 반전 |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | 잠금 |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | 텍스트 |
@@ -320,7 +322,7 @@ npm test            # matrix, geometry, spatial, cache, ui 등 125개 단정문
 - [ ] `@dohwa/react` 바인딩 패키지 (`dohwa/ui`의 얇은 래퍼)
 - [x] ~~행렬 트랜스폼 모델 (비균등 스케일, 스큐, 중첩 트랜스폼)~~ — v0.4
 - [x] ~~공간 인덱스 + 대규모 씬을 위한 뷰포트 컬링~~ — v0.4
-- [ ] UI에서 행렬을 직접 다루는 자유 변형 제스처 (스큐/코너 핸들)
+- [x] ~~UI에서 행렬을 직접 다루는 자유 변형 제스처 (스큐/코너 핸들)~~ — v0.5
 - [ ] ObjectCache를 기본 렌더 경로에 연결 (시각적 회귀 테스트 필요)
 - [ ] 레이어드 캔버스 (정적 + 인터랙션)
 - [ ] 리치 텍스트 (글자별 스타일링), 패턴/그라디언트 채우기

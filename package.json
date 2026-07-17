@@ -1,6 +1,6 @@
 {
   "name": "dohwa",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "도화(圖畵) — a headless canvas drawing engine with a matrix transform model and a spatial-index performance layer. Bring your own UI.",
   "type": "module",
   "main": "./dist/index.js",
