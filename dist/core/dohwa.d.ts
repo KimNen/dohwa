@@ -20,6 +20,7 @@ export declare class Dohwa {
     private fontSize;
     private minZoom;
     private maxZoom;
+    private snapEnabled;
     private clipboard;
     private editing;
     private cropping;
@@ -38,6 +39,9 @@ export declare class Dohwa {
     getStyle(): Style;
     /** Sets the style for new nodes AND applies it to the current selection. */
     setStyle(patch: Partial<Style>): void;
+    /** Whether moves snap to other objects' edges/centers. */
+    isSnapEnabled(): boolean;
+    setSnapEnabled(on: boolean): void;
     getNodes(): DohwaNode[];
     getSelectedIds(): string[];
     selectAll(): void;

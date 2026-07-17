@@ -372,6 +372,51 @@ export function distributeDeltas(boxes, axis) {
     return deltas;
 }
 /**
+ * Snap a moving box to nearby target boxes' edges and centers. Each axis snaps
+ * independently to its single closest line within `threshold` (world units);
+ * `guides` lists every target line that ends up coinciding, for drawing smart
+ * guides. Pure — no state, no DOM.
+ */
+export function snapMove(moving, targets, threshold) {
+    const ax = [moving.x, moving.x + moving.w / 2, moving.x + moving.w];
+    const ay = [moving.y, moving.y + moving.h / 2, moving.y + moving.h];
+    const linesX = [];
+    const linesY = [];
+    for (const t of targets) {
+        linesX.push(t.x, t.x + t.w / 2, t.x + t.w);
+        linesY.push(t.y, t.y + t.h / 2, t.y + t.h);
+    }
+    const bestDiff = (anchors, lines) => {
+        let diff = null;
+        for (const a of anchors) {
+            for (const l of lines) {
+                const d = l - a;
+                if (diff === null || Math.abs(d) < Math.abs(diff))
+                    diff = d;
+            }
+        }
+        return diff !== null && Math.abs(diff) <= threshold ? diff : null;
+    };
+    const dx = bestDiff(ax, linesX);
+    const dy = bestDiff(ay, linesY);
+    const rdx = dx ?? 0;
+    const rdy = dy ?? 0;
+    const guides = { x: [], y: [] };
+    if (dx !== null) {
+        const moved = ax.map((a) => a + rdx);
+        for (const l of linesX)
+            if (moved.some((a) => Math.abs(a - l) < 1e-6))
+                guides.x.push(l);
+    }
+    if (dy !== null) {
+        const moved = ay.map((a) => a + rdy);
+        for (const l of linesY)
+            if (moved.some((a) => Math.abs(a - l) < 1e-6))
+                guides.y.push(l);
+    }
+    return { dx: rdx, dy: rdy, guides: { x: [...new Set(guides.x)], y: [...new Set(guides.y)] } };
+}
+/**
  * Move the selected entries of an ordered id list one step toward the front
  * (`forward`, i.e. later in the array) or back (`backward`). A contiguous run
  * of selected ids moves together and preserves its internal order. Pure: does

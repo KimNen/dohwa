@@ -192,6 +192,8 @@ export interface DohwaOptions {
   /** min/max zoom (default 0.1 / 8) */
   minZoom?: number;
   maxZoom?: number;
+  /** snap moves to other objects' edges/centers with smart guides (default true; hold Alt to bypass) */
+  snap?: boolean;
 }
 
 export interface ExportPNGOptions {

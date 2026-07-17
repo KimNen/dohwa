@@ -35,10 +35,12 @@ import {
   pointInBBox,
   rotatePoint,
   scaleNodeInto,
+  snapMove,
   translateNode,
   unionBBox,
   type AlignMode,
   type DistributeAxis,
+  type SnapGuides,
 } from '../geometry/geometry.js';
 import { isIdentity } from '../geometry/matrix.js';
 import { LINE_HEIGHT, measureText, renderScene, type ImageCache } from '../render/render.js';
@@ -67,7 +69,7 @@ type HandleHit = { kind: 'resize'; index: number } | { kind: 'rotate' };
 type InteractionMode =
   | { kind: 'none' }
   | { kind: 'draw'; node: DohwaNode; start: Point }
-  | { kind: 'move'; last: Point; moved: boolean }
+  | { kind: 'move'; start: Point; applied: Point; origin: BBox; moved: boolean; guides: SnapGuides }
   | {
       kind: 'resize';
       handle: number;
@@ -111,6 +113,8 @@ const HANDLES: ReadonlyArray<{ hx: number; hy: number; cursor: string }> = [
 ];
 
 const SELECTION_COLOR = '#4467ff';
+const SNAP_GUIDE_COLOR = '#f2318c';
+const SNAP_THRESHOLD = 6; // screen px within which a move snaps to a guide
 const ROTATE_OFFSET = 26; // screen px above the frame
 
 export class Dohwa {
@@ -134,6 +138,7 @@ export class Dohwa {
   private fontSize: number;
   private minZoom: number;
   private maxZoom: number;
+  private snapEnabled: boolean;
   private clipboard: DohwaNode[] = [];
   private editing: { node: TextNode; el: HTMLTextAreaElement } | null = null;
   private cropping: { node: ImageNode; original: ImageNode } | null = null;
@@ -156,6 +161,7 @@ export class Dohwa {
     this.fontSize = options.fontSize ?? 28;
     this.minZoom = options.minZoom ?? 0.1;
     this.maxZoom = options.maxZoom ?? 8;
+    this.snapEnabled = options.snap ?? true;
 
     if (getComputedStyle(container).position === 'static') {
       container.style.position = 'relative';
@@ -223,6 +229,15 @@ export class Dohwa {
       this.commit();
     }
     this.requestRender();
+  }
+
+  /** Whether moves snap to other objects' edges/centers. */
+  isSnapEnabled(): boolean {
+    return this.snapEnabled;
+  }
+
+  setSnapEnabled(on: boolean): void {
+    this.snapEnabled = on;
   }
 
   // ================================================================ selection
@@ -1216,6 +1231,26 @@ export class Dohwa {
       ctx.strokeRect(x, y, w, h);
       ctx.restore();
     }
+
+    if (this.mode.kind === 'move' && (this.mode.guides.x.length || this.mode.guides.y.length)) {
+      const { width, height } = this.canvas.getBoundingClientRect();
+      ctx.save();
+      ctx.strokeStyle = SNAP_GUIDE_COLOR;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const gx of this.mode.guides.x) {
+        const sx = Math.round(this.worldToScreen({ x: gx, y: 0 }).x) + 0.5;
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+      }
+      for (const gy of this.mode.guides.y) {
+        const sy = Math.round(this.worldToScreen({ x: 0, y: gy }).y) + 0.5;
+        ctx.moveTo(0, sy);
+        ctx.lineTo(width, sy);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ---------------------------------------------------------------- interaction
@@ -1398,7 +1433,14 @@ export class Dohwa {
             this.selection = new Set([hit.id]);
             this.emitSelection();
           }
-          this.mode = { kind: 'move', last: world, moved: false };
+          this.mode = {
+            kind: 'move',
+            start: world,
+            applied: { x: 0, y: 0 },
+            origin: unionBBox(this.selectedNodes().map(getAABB)),
+            moved: false,
+            guides: { x: [], y: [] },
+          };
         } else {
           const base = e.shiftKey ? [...this.selection] : [];
           if (!e.shiftKey && this.selection.size > 0) {
@@ -1603,15 +1645,34 @@ export class Dohwa {
         return;
       }
       case 'move': {
-        const dx = world.x - mode.last.x;
-        const dy = world.y - mode.last.y;
-        if (dx !== 0 || dy !== 0) {
-          for (const n of this.selectedNodes()) translateNode(n, dx, dy);
-          mode.last = world;
+        const raw = { x: world.x - mode.start.x, y: world.y - mode.start.y };
+        let fx = raw.x;
+        let fy = raw.y;
+        mode.guides = { x: [], y: [] };
+        if (this.snapEnabled && !e.altKey) {
+          const desired: BBox = {
+            x: mode.origin.x + raw.x,
+            y: mode.origin.y + raw.y,
+            w: mode.origin.w,
+            h: mode.origin.h,
+          };
+          const targets = this.nodes
+            .filter((n) => !this.selection.has(n.id))
+            .map(getAABB);
+          const snap = snapMove(desired, targets, SNAP_THRESHOLD / this.viewport.scale);
+          fx = raw.x + snap.dx;
+          fy = raw.y + snap.dy;
+          mode.guides = snap.guides;
+        }
+        const stepX = fx - mode.applied.x;
+        const stepY = fy - mode.applied.y;
+        if (stepX !== 0 || stepY !== 0) {
+          for (const n of this.selectedNodes()) translateNode(n, stepX, stepY);
+          mode.applied = { x: fx, y: fy };
           mode.moved = true;
           this.invalidateIndex();
-          this.requestRender();
         }
+        this.requestRender();
         return;
       }
       case 'resize': {

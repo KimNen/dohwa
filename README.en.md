@@ -32,6 +32,7 @@ and a server route that only builds scenes never touches DOM code.
 
 **Editing**
 - 🧲 Selection — click, shift-click, marquee; move, 8-handle resize (Shift = keep ratio)
+- 🧭 **Object snapping & smart guides** — dragging snaps to other objects' edges/centers and draws alignment guides (hold Alt to bypass, `snap` option to disable)
 - 🔄 **Rotation** — rotation handle above the selection (Shift = 15° snap); multi-selection orbits around the common pivot; rotation-aware hit testing & AABB
 - 🧽 **Eraser** — drag to delete objects
 - 🗂 Grouping — group / ungroup (group rotation is baked into children on ungroup)
@@ -216,6 +217,7 @@ tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
 | `background` | `string` | `'transparent'` |
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
+| `snap` | `boolean` | `true` |
 
 `Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan'`
 
@@ -235,6 +237,7 @@ implementation of that pattern.
 | `group()` / `ungroup()` | grouping |
 | `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
 | `alignSelection(mode)` / `distributeSelection(axis)` | align / distribute |
+| `isSnapEnabled()` / `setSnapEnabled(on)` | toggle object snapping |
 | `flipSelection('h' \| 'v')` | mirror |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | lock |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | text |

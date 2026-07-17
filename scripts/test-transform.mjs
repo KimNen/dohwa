@@ -1,4 +1,4 @@
-import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep } from '../dist/geometry/geometry.js';
+import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep, snapMove } from '../dist/geometry/geometry.js';
 import { compose, composeAll, rotation, scaling, translation, applyToPoint, decompose } from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
@@ -125,4 +125,26 @@ ok('decompose node angle', close(decompose(rotNode.transform).angle, 0.6));
   ok('front element cannot go further forward', orderStep(order, new Set(['d']), 'forward').join('') === 'abcd');
   ok('contiguous block moves together', orderStep(order, new Set(['a', 'b']), 'forward').join('') === 'cabd');
   ok('orderStep does not mutate input', order.join('') === 'abcd');
+}
+
+// --- snapMove: edge/center snapping + guide lines
+{
+  const target = { x: 100, y: 100, w: 40, h: 40 }; // edges x:100/120/140, y:100/120/140
+  // moving box whose left edge (98) is 2px from the target's left (100) -> snaps +2
+  const near = { x: 98, y: 300, w: 20, h: 20 };
+  const r = snapMove(near, [target], 5);
+  ok('snap: left edge pulls to target left', close(r.dx, 2) && r.guides.x.includes(100));
+  ok('snap: no y snap when far', r.dy === 0 && r.guides.y.length === 0);
+
+  // center-to-center snap: moving center at 121 vs target center 120 -> -1
+  const centered = { x: 111, y: 300, w: 20, h: 20 }; // center 121
+  const rc = snapMove(centered, [target], 5);
+  ok('snap: center aligns to target center', close(rc.dx, -1) && rc.guides.x.includes(120));
+
+  // beyond threshold: no snap. anchors x: 90/92/94 vs lines 100/120/140 -> min diff 6 > 5
+  const farBox = { x: 90, y: 300, w: 4, h: 4 };
+  const rf = snapMove(farBox, [target], 5);
+  ok('snap: beyond threshold does nothing', rf.dx === 0 && rf.dy === 0 && rf.guides.x.length === 0);
+
+  ok('snap: no targets is a no-op', snapMove(near, [], 5).dx === 0);
 }

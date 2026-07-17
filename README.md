@@ -32,6 +32,7 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 
 **편집**
 - 🧲 선택 — 클릭, Shift-클릭, 마키(드래그 선택); 이동, 8-핸들 리사이즈 (Shift = 비율 유지)
+- 🧭 **객체 스냅 & 스마트 가이드** — 드래그 시 다른 객체의 모서리·중심에 달라붙고 가이드선 표시 (Alt로 일시 해제, `snap` 옵션으로 끄기)
 - 🔄 **회전** — 선택 영역 위의 회전 핸들(Shift = 15° 스냅); 다중 선택 시 공통 피벗을 중심으로 회전; 회전을 고려한 히트 테스트 & AABB
 - 🧽 **지우개** — 드래그해서 객체 삭제
 - 🗂 그룹핑 — 그룹 / 그룹 해제 (그룹 해제 시 그룹 회전값이 자식 노드에 반영됨)
@@ -216,6 +217,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `background` | `string` | `'transparent'` |
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
+| `snap` | `boolean` | `true` |
 
 `Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan'`
 
@@ -234,6 +236,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `group()` / `ungroup()` | 그룹핑 |
 | `bringToFront()` / `sendToBack()` / `bringForward()` / `sendBackward()` | z-order |
 | `alignSelection(mode)` / `distributeSelection(axis)` | 정렬 / 분배 |
+| `isSnapEnabled()` / `setSnapEnabled(on)` | 객체 스냅 토글 |
 | `flipSelection('h' \| 'v')` | 반전 |
 | `lockSelection()` / `unlockAll()` / `hasLockedNodes()` | 잠금 |
 | `addText(text, at?, fontSize?)` / `startTextEdit(node)` | 텍스트 |

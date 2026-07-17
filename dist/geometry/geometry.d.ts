@@ -60,6 +60,25 @@ export declare function alignDeltas(boxes: BBox[], mode: AlignMode): Point[];
  * only the in-between ones move. Fewer than 3 boxes yields zero deltas.
  */
 export declare function distributeDeltas(boxes: BBox[], axis: DistributeAxis): Point[];
+export interface SnapGuides {
+    /** world x-coordinates for vertical guide lines */
+    x: number[];
+    /** world y-coordinates for horizontal guide lines */
+    y: number[];
+}
+export interface SnapResult {
+    /** x adjustment to add to the moving box so it snaps */
+    dx: number;
+    dy: number;
+    guides: SnapGuides;
+}
+/**
+ * Snap a moving box to nearby target boxes' edges and centers. Each axis snaps
+ * independently to its single closest line within `threshold` (world units);
+ * `guides` lists every target line that ends up coinciding, for drawing smart
+ * guides. Pure — no state, no DOM.
+ */
+export declare function snapMove(moving: BBox, targets: BBox[], threshold: number): SnapResult;
 /**
  * Move the selected entries of an ordered id list one step toward the front
  * (`forward`, i.e. later in the array) or back (`backward`). A contiguous run
