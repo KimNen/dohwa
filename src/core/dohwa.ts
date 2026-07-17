@@ -13,6 +13,7 @@ import type {
   Point,
   ReplayOptions,
   SceneJSON,
+  StrokePoint,
   Style,
   TextNode,
   Tool,
@@ -162,6 +163,7 @@ export class Dohwa {
   private minZoom: number;
   private maxZoom: number;
   private snapEnabled: boolean;
+  private pressureEnabled: boolean;
   private clipboard: DohwaNode[] = [];
   private editing: { node: TextNode; el: HTMLTextAreaElement } | null = null;
   private cropping: { node: ImageNode; original: ImageNode } | null = null;
@@ -185,6 +187,7 @@ export class Dohwa {
     this.minZoom = options.minZoom ?? 0.1;
     this.maxZoom = options.maxZoom ?? 8;
     this.snapEnabled = options.snap ?? true;
+    this.pressureEnabled = options.pressure ?? true;
 
     if (getComputedStyle(container).position === 'static') {
       container.style.position = 'relative';
@@ -1431,6 +1434,17 @@ export class Dohwa {
     return null;
   }
 
+  /**
+   * A freehand sample. Stylus force is recorded only for a real pen that
+   * reports it — mouse and touch strokes stay uniform-width, exactly as before.
+   */
+  private strokePoint(world: Point, e: PointerEvent): StrokePoint {
+    if (!this.pressureEnabled || e.pointerType !== 'pen' || e.pressure <= 0) {
+      return { x: world.x, y: world.y };
+    }
+    return { x: world.x, y: world.y, pressure: e.pressure };
+  }
+
   /** Map a world point into the frame's local (unrotated) space. */
   private toFrameLocal(world: Point, center: Point, rotation: number): Point {
     return rotation === 0 ? world : rotatePoint(world, center, -rotation);
@@ -1537,7 +1551,7 @@ export class Dohwa {
         const node: PathNode = {
           id: genId(),
           type: 'path',
-          points: [world],
+          points: [this.strokePoint(world, e)],
           style: { ...this.style, fill: 'transparent' },
         };
         this.nodes.push(node);
@@ -1698,7 +1712,7 @@ export class Dohwa {
         if (node.type === 'path') {
           const last = node.points[node.points.length - 1];
           const distScreen = Math.hypot(world.x - last.x, world.y - last.y) * this.viewport.scale;
-          if (distScreen >= 1.5) node.points.push(world);
+          if (distScreen >= 1.5) node.points.push(this.strokePoint(world, e));
         } else if (
           node.type === 'rect' ||
           node.type === 'ellipse' ||

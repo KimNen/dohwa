@@ -22,6 +22,7 @@ export declare class Dohwa {
     private minZoom;
     private maxZoom;
     private snapEnabled;
+    private pressureEnabled;
     private clipboard;
     private editing;
     private cropping;
@@ -191,6 +192,11 @@ export declare class Dohwa {
     private hitTopmost;
     /** Which handle (if any) is under a screen point. */
     private handleAt;
+    /**
+     * A freehand sample. Stylus force is recorded only for a real pen that
+     * reports it — mouse and touch strokes stay uniform-width, exactly as before.
+     */
+    private strokePoint;
     /** Map a world point into the frame's local (unrotated) space. */
     private toFrameLocal;
     private cloneSelection;

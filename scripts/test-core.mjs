@@ -87,6 +87,18 @@ ok('svg escapes XML', svg.includes('안녕&lt;&amp;&gt;&quot;'));
 ok('svg emits transform matrix', svg.includes('matrix('));
 ok('svg well-formed', svg.startsWith('<svg') && svg.endsWith('</svg>'));
 
+// a pressure stroke has no single stroke-width: it exports as per-segment paths
+const pressureStroke = {
+  id: 'pp', type: 'path', style: { ...style, stroke: '#111', strokeWidth: 8 },
+  points: [{ x: 0, y: 0, pressure: 1 }, { x: 10, y: 0, pressure: 0.5 }, { x: 20, y: 0, pressure: 0.1 }],
+};
+const psvg = sceneToSVG([pressureStroke]);
+const widths = [...psvg.matchAll(/stroke-width="([\d.]+)"/g)].map((m) => Number(m[1]));
+ok('svg: pressure stroke emits one path per segment', (psvg.match(/<path/g) || []).length === 2);
+ok('svg: pressure stroke widths taper', widths.length === 2 && widths[0] > widths[1]);
+ok('svg: plain stroke still emits a single path',
+  (sceneToSVG([{ ...pressureStroke, points: [{ x:0,y:0 }, { x:10,y:0 }, { x:20,y:0 }] }].map((n) => n)).match(/<path/g) || []).length === 1);
+
 // ---------------------------------------------------------------- image crop
 const { cropFullRect, cropFromRects } = await import('../dist/index.js');
 

@@ -460,6 +460,35 @@ export function orderStep(order, selected, dir) {
     }
     return next;
 }
+// ---------------------------------------------------------------- pressure
+/** Width floor as a fraction of strokeWidth, so pressure 0 still leaves a mark. */
+const PRESSURE_MIN = 0.35;
+/** True when a stroke carries stylus pressure and must be drawn with varying width. */
+export function hasPressure(node) {
+    return node.points.some((p) => p.pressure !== undefined);
+}
+/**
+ * Effective stroke width for one sample. Maps pressure 0..1 onto
+ * PRESSURE_MIN..1 of `base`; a sample with no pressure draws at full width.
+ * Lives here (not in render/) so the canvas renderer, the SVG serializer, and
+ * hit-testing all share one definition of how thick a sample is.
+ */
+export function strokeWidthAt(base, pressure) {
+    if (pressure === undefined)
+        return base;
+    const p = Math.max(0, Math.min(1, pressure));
+    return base * (PRESSURE_MIN + (1 - PRESSURE_MIN) * p);
+}
+/** Per-segment widths for a pressure stroke: segment i spans points i..i+1. */
+export function segmentWidths(points, base) {
+    const widths = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const a = strokeWidthAt(base, points[i].pressure);
+        const b = strokeWidthAt(base, points[i + 1].pressure);
+        widths.push((a + b) / 2);
+    }
+    return widths;
+}
 // ---------------------------------------------------------------- image crop
 /**
  * The rect the FULL (uncropped) image would occupy, given the node's visible
@@ -554,10 +583,16 @@ export function hitTestNode(node, point, tolerance) {
             if (!pointInBBox(p, getBBox(node), tol))
                 return false;
             const pts = node.points;
-            if (pts.length === 1)
-                return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tol;
+            if (pts.length === 1) {
+                const r = strokeWidthAt(node.style.strokeWidth, pts[0].pressure) / 2;
+                return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= tolerance + r;
+            }
+            // a pressure stroke is thinner where the stylus was light, so each
+            // segment gets its own slop instead of the node-wide strokeWidth
+            const widths = hasPressure(node) ? segmentWidths(pts, node.style.strokeWidth) : null;
             for (let i = 0; i < pts.length - 1; i++) {
-                if (distToSegment(p, pts[i], pts[i + 1]) <= tol)
+                const segTol = widths ? tolerance + widths[i] / 2 : tol;
+                if (distToSegment(p, pts[i], pts[i + 1]) <= segTol)
                     return true;
             }
             return false;

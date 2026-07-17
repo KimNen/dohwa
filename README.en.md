@@ -25,7 +25,7 @@ and a server route that only builds scenes never touches DOM code.
 ## Features
 
 **Drawing**
-- ✍️ Freehand pen with quadratic smoothing
+- ✍️ Freehand pen with quadratic smoothing — **pressure-sensitive** width (stylus)
 - ⬛ Shapes — rectangle (`rx` rounded corners), ellipse, diamond, triangle, line, **arrow · double-headed arrow** (Shift = square / circle / 45° snap; press `A` again to toggle both heads)
 - 🔤 **Text** — click to create, double-click to edit inline (floating textarea), multiline, font scaling on resize
 - 🖼 Images — URL / `File` / drag & drop, horizontal·vertical flip, ✂️ **cropping** — double-click to enter, drag handles to trim and drag inside to slide the image, Enter applies / Esc cancels (non-destructive: the source is kept)
@@ -219,6 +219,7 @@ tree.queryPoint(x, y);   // O(log n + k) broad-phase, not O(n)
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
 | `snap` | `boolean` | `true` |
+| `pressure` | `boolean` | `true` |
 
 `Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan'`
 
@@ -316,7 +317,7 @@ npm test            # 125 assertions across matrix, geometry, spatial, cache, ui
 ## Roadmap
 
 - [ ] Replay scrubber / export replay as GIF·WebM
-- [ ] Pressure-sensitive strokes (PointerEvent.pressure)
+- [x] ~~Pressure-sensitive strokes (PointerEvent.pressure)~~ — v0.5
 - [ ] Pixel-level path eraser (split segments)
 - [x] ~~Exported UI material (tool metadata, palettes, headless store)~~ — v0.3
 - [ ] `@dohwa/react` bindings package (thin wrapper over `dohwa/ui`)

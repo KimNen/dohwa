@@ -6,7 +6,7 @@ import type {
   ImageNode,
   LineNode,
   PathNode,
-  Point,
+  StrokePoint,
   RectNode,
   SceneJSON,
   Style,
@@ -91,11 +91,12 @@ export function arrow(init: {
 }
 
 export function path(init: {
-  points: Point[]; style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
+  points: StrokePoint[]; style?: Partial<Style>; transform?: Matrix; rotation?: number; locked?: boolean;
 }): PathNode {
   const { points, style, transform, rotation, locked } = init;
   return {
-    id: createId(), type: 'path', points: points.map((p) => ({ x: p.x, y: p.y })),
+    id: createId(), type: 'path',
+    points: points.map((p) => (p.pressure === undefined ? { x: p.x, y: p.y } : { x: p.x, y: p.y, pressure: p.pressure })),
     style: withStyle(style), transform, rotation, locked,
   };
 }

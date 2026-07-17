@@ -6,6 +6,16 @@ export interface Point {
   y: number;
 }
 
+/**
+ * A freehand sample. Extends Point, so every geometry op that moves points
+ * (translate/scale/flip) carries `pressure` through untouched.
+ * Absent = no pressure data; the stroke draws at a uniform `strokeWidth`.
+ */
+export interface StrokePoint extends Point {
+  /** stylus force, 0..1 (PointerEvent.pressure) */
+  pressure?: number;
+}
+
 export interface BBox {
   x: number;
   y: number;
@@ -46,7 +56,7 @@ interface NodeBase {
 /** Freehand stroke */
 export interface PathNode extends NodeBase {
   type: 'path';
-  points: Point[];
+  points: StrokePoint[];
 }
 
 export interface RectNode extends NodeBase {
@@ -194,6 +204,8 @@ export interface DohwaOptions {
   maxZoom?: number;
   /** snap moves to other objects' edges/centers with smart guides (default true; hold Alt to bypass) */
   snap?: boolean;
+  /** vary freehand stroke width with stylus pressure (default true; pen input only) */
+  pressure?: boolean;
 }
 
 export interface ExportPNGOptions {

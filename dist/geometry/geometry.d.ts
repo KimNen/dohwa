@@ -1,4 +1,4 @@
-import type { BBox, CropRect, DohwaNode, Point } from '../types.js';
+import type { BBox, CropRect, DohwaNode, PathNode, Point, StrokePoint } from '../types.js';
 import type { Matrix } from './matrix.js';
 /**
  * The node's effective affine transform, expressed around the WORLD origin
@@ -97,6 +97,17 @@ export declare function snapMove(moving: BBox, targets: BBox[], threshold: numbe
  * not mutate the input, returns a new array.
  */
 export declare function orderStep(order: string[], selected: ReadonlySet<string>, dir: 'forward' | 'backward'): string[];
+/** True when a stroke carries stylus pressure and must be drawn with varying width. */
+export declare function hasPressure(node: PathNode): boolean;
+/**
+ * Effective stroke width for one sample. Maps pressure 0..1 onto
+ * PRESSURE_MIN..1 of `base`; a sample with no pressure draws at full width.
+ * Lives here (not in render/) so the canvas renderer, the SVG serializer, and
+ * hit-testing all share one definition of how thick a sample is.
+ */
+export declare function strokeWidthAt(base: number, pressure: number | undefined): number;
+/** Per-segment widths for a pressure stroke: segment i spans points i..i+1. */
+export declare function segmentWidths(points: StrokePoint[], base: number): number[];
 /**
  * The rect the FULL (uncropped) image would occupy, given the node's visible
  * rect `box` and its crop window. This is where the crop editor draws the

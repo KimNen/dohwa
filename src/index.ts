@@ -29,6 +29,9 @@ export {
   orderStep,
   snapMove,
   skewFromEdgeDrag,
+  hasPressure,
+  strokeWidthAt,
+  segmentWidths,
 } from './geometry/geometry.js';
 export type { AlignMode, DistributeAxis, SnapGuides, SnapResult, SkewEdge } from './geometry/geometry.js';
 

@@ -25,7 +25,7 @@ dohwa는 `<canvas>` 하나를 소유하고 명령형 API와 이벤트를 제공�
 ## 기능
 
 **드로잉**
-- ✍️ 2차 베지어로 부드럽게 처리되는 자유곡선 펜
+- ✍️ 2차 베지어로 부드럽게 처리되는 자유곡선 펜 — **필압 감지**(스타일러스)로 선 굵기 변화
 - ⬛ 도형 — 사각형(`rx` 모서리 둥글기), 타원, 다이아몬드, 삼각형, 직선, **화살표 · 양방향 화살표** (Shift = 정사각형 / 정원 / 45° 스냅, `A`를 한 번 더 누르면 양방향 전환)
 - 🔤 **텍스트** — 클릭해서 생성, 더블클릭으로 인라인 편집(플로팅 텍스트에어리어), 여러 줄, 리사이즈 시 폰트 크기 자동 조정
 - 🖼 이미지 — URL / `File` / 드래그 앤 드롭, 좌우·상하 반전, ✂️ **잘라내기(크롭)** — 더블클릭으로 진입, 핸들 드래그로 자르고 안쪽 드래그로 이미지 이동, Enter 적용 / Esc 취소 (원본은 유지되어 언제든 되돌릴 수 있음)
@@ -219,6 +219,7 @@ tree.queryPoint(x, y);   // O(n) 전수 조사가 아닌 O(log n + k) 광역 조
 | `fontFamily` / `fontSize` | `string` / `number` | `'sans-serif'` / `28` |
 | `minZoom` / `maxZoom` | `number` | `0.1` / `8` |
 | `snap` | `boolean` | `true` |
+| `pressure` | `boolean` | `true` |
 
 `Tool` = `'select' | 'pen' | 'rect' | 'ellipse' | 'diamond' | 'triangle' | 'line' | 'arrow' | 'arrow-both' | 'text' | 'eraser' | 'pan'`
 
@@ -316,7 +317,7 @@ npm test            # matrix, geometry, spatial, cache, ui 등 125개 단정문
 ## 로드맵
 
 - [ ] 리플레이 스크러버 / GIF·WebM으로 리플레이 내보내기
-- [ ] 필압 감지 스트로크 (PointerEvent.pressure)
+- [x] ~~필압 감지 스트로크 (PointerEvent.pressure)~~ — v0.5
 - [ ] 픽셀 단위 경로 지우개 (세그먼트 분할)
 - [x] ~~UI 재료 export (툴 메타데이터, 팔레트, 헤드리스 스토어)~~ — v0.3
 - [ ] `@dohwa/react` 바인딩 패키지 (`dohwa/ui`의 얇은 래퍼)

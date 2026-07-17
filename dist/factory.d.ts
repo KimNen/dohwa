@@ -1,4 +1,4 @@
-import type { DiamondNode, DohwaNode, EllipseNode, GroupNode, ImageNode, LineNode, PathNode, Point, RectNode, SceneJSON, Style, TextNode, TriangleNode } from './types.js';
+import type { DiamondNode, DohwaNode, EllipseNode, GroupNode, ImageNode, LineNode, PathNode, StrokePoint, RectNode, SceneJSON, Style, TextNode, TriangleNode } from './types.js';
 import type { Matrix } from './geometry/matrix.js';
 export declare function createId(prefix?: string): string;
 export interface BoxInit {
@@ -46,7 +46,7 @@ export declare function arrow(init: {
     locked?: boolean;
 }): LineNode;
 export declare function path(init: {
-    points: Point[];
+    points: StrokePoint[];
     style?: Partial<Style>;
     transform?: Matrix;
     rotation?: number;

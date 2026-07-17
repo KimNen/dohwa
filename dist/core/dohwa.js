@@ -61,6 +61,7 @@ export class Dohwa {
         this.minZoom = options.minZoom ?? 0.1;
         this.maxZoom = options.maxZoom ?? 8;
         this.snapEnabled = options.snap ?? true;
+        this.pressureEnabled = options.pressure ?? true;
         if (getComputedStyle(container).position === 'static') {
             container.style.position = 'relative';
         }
@@ -1226,6 +1227,16 @@ export class Dohwa {
         }
         return null;
     }
+    /**
+     * A freehand sample. Stylus force is recorded only for a real pen that
+     * reports it — mouse and touch strokes stay uniform-width, exactly as before.
+     */
+    strokePoint(world, e) {
+        if (!this.pressureEnabled || e.pointerType !== 'pen' || e.pressure <= 0) {
+            return { x: world.x, y: world.y };
+        }
+        return { x: world.x, y: world.y, pressure: e.pressure };
+    }
     /** Map a world point into the frame's local (unrotated) space. */
     toFrameLocal(world, center, rotation) {
         return rotation === 0 ? world : rotatePoint(world, center, -rotation);
@@ -1336,7 +1347,7 @@ export class Dohwa {
                 const node = {
                     id: genId(),
                     type: 'path',
-                    points: [world],
+                    points: [this.strokePoint(world, e)],
                     style: { ...this.style, fill: 'transparent' },
                 };
                 this.nodes.push(node);
@@ -1498,7 +1509,7 @@ export class Dohwa {
                     const last = node.points[node.points.length - 1];
                     const distScreen = Math.hypot(world.x - last.x, world.y - last.y) * this.viewport.scale;
                     if (distScreen >= 1.5)
-                        node.points.push(world);
+                        node.points.push(this.strokePoint(world, e));
                 }
                 else if (node.type === 'rect' ||
                     node.type === 'ellipse' ||

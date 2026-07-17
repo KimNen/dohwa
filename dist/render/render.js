@@ -1,4 +1,4 @@
-import { diamondPoints, getBBox, nodeMatrix, trianglePoints } from '../geometry/geometry.js';
+import { diamondPoints, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, } from '../geometry/geometry.js';
 import { isIdentity } from '../geometry/matrix.js';
 export const LINE_HEIGHT = 1.3;
 // ---------------------------------------------------------------- text measure
@@ -54,6 +54,39 @@ export function tracePath(ctx, node) {
     const last = pts[pts.length - 1];
     ctx.lineTo(last.x, last.y);
 }
+/**
+ * Draw a pressure stroke: one stroke per segment, each at its own width.
+ * Round caps/joins make the width steps blend into a continuous taper —
+ * a single Path2D can't vary lineWidth, so the segments carry it instead.
+ */
+function tracePressurePath(ctx, node) {
+    const pts = node.points;
+    const { stroke, strokeWidth } = node.style;
+    if (stroke === 'transparent' || strokeWidth <= 0 || pts.length === 0)
+        return;
+    ctx.save();
+    ctx.strokeStyle = stroke;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (pts.length === 1) {
+        // a lone sample is a dot sized by its own pressure
+        ctx.fillStyle = stroke;
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, strokeWidthAt(strokeWidth, pts[0].pressure) / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+    const widths = segmentWidths(pts, strokeWidth);
+    for (let i = 0; i < pts.length - 1; i++) {
+        ctx.lineWidth = widths[i];
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y);
+        ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
 function traceRoundedRect(ctx, x, y, w, h, r) {
     const rr = Math.min(r, w / 2, h / 2);
     ctx.moveTo(x + rr, y);
@@ -97,7 +130,10 @@ export function renderNode(ctx, node, images, options = {}) {
     }
     switch (node.type) {
         case 'path':
-            applyStrokeFill(ctx, node, () => tracePath(ctx, node));
+            if (hasPressure(node))
+                tracePressurePath(ctx, node);
+            else
+                applyStrokeFill(ctx, node, () => tracePath(ctx, node));
             break;
         case 'rect':
             applyStrokeFill(ctx, node, () => {

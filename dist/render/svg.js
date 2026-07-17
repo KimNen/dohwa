@@ -1,4 +1,4 @@
-import { diamondPoints, getAABB, getBBox, nodeMatrix, trianglePoints, unionBBox, } from '../geometry/geometry.js';
+import { diamondPoints, getAABB, getBBox, hasPressure, nodeMatrix, segmentWidths, strokeWidthAt, trianglePoints, unionBBox, } from '../geometry/geometry.js';
 import { isIdentity, toCSS } from '../geometry/matrix.js';
 import { arrowHead, LINE_HEIGHT } from './render.js';
 const fmt = (n) => String(Math.round(n * 100) / 100);
@@ -60,6 +60,36 @@ function lineSVG(node) {
         (node.arrowStart ? head(node.x2, node.y2, node.x1, node.y1) : '');
     return `<g${attr}>${line}${heads}</g>`;
 }
+/**
+ * A pressure stroke as a group of per-segment paths, each with its own
+ * stroke-width — SVG has no variable-width stroke, so this mirrors what the
+ * canvas renderer does (and reuses its width math).
+ */
+function pressurePathSVG(node) {
+    const pts = node.points;
+    const { stroke, strokeWidth, opacity } = node.style;
+    if (stroke === 'transparent' || strokeWidth <= 0 || pts.length === 0)
+        return '';
+    const groupAttrs = [
+        `stroke="${stroke}"`,
+        'fill="none"',
+        'stroke-linecap="round"',
+        'stroke-linejoin="round"',
+    ];
+    if (opacity !== 1)
+        groupAttrs.push(`opacity="${fmt(opacity)}"`);
+    if (pts.length === 1) {
+        const r = strokeWidthAt(strokeWidth, pts[0].pressure) / 2;
+        return `<g ${groupAttrs.join(' ')}${rotationAttr(node)}><circle cx="${fmt(pts[0].x)}" cy="${fmt(pts[0].y)}" r="${fmt(r)}" fill="${stroke}"/></g>`;
+    }
+    const widths = segmentWidths(pts, strokeWidth);
+    const segs = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+        const d = `M ${fmt(pts[i].x)} ${fmt(pts[i].y)} L ${fmt(pts[i + 1].x)} ${fmt(pts[i + 1].y)}`;
+        segs.push(`<path d="${d}" stroke-width="${fmt(widths[i])}"/>`);
+    }
+    return `<g ${groupAttrs.join(' ')}${rotationAttr(node)}>${segs.join('')}</g>`;
+}
 function polygonSVG(node, pts) {
     const points = pts.map((p) => `${fmt(p.x)},${fmt(p.y)}`).join(' ');
     return `<polygon points="${points}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
@@ -67,6 +97,8 @@ function polygonSVG(node, pts) {
 export function nodeToSVG(node) {
     switch (node.type) {
         case 'path':
+            if (hasPressure(node))
+                return pressurePathSVG(node);
             return `<path d="${pathD(node)}" ${styleAttrs(node)}${rotationAttr(node)}/>`;
         case 'rect':
             return `<rect x="${fmt(node.x)}" y="${fmt(node.y)}" width="${fmt(node.w)}" height="${fmt(node.h)}"${node.rx ? ` rx="${fmt(node.rx)}"` : ''} ${styleAttrs(node)}${rotationAttr(node)}/>`;

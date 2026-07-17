@@ -1,4 +1,4 @@
-import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep, snapMove, skewFromEdgeDrag } from '../dist/geometry/geometry.js';
+import { getAABB, hitTestNode, nodeMatrix, toLocalPoint, hasTransform, flipNode, alignDeltas, distributeDeltas, orderStep, snapMove, skewFromEdgeDrag, hasPressure, strokeWidthAt, segmentWidths } from '../dist/geometry/geometry.js';
 import { compose, composeAll, rotation, scaling, translation, applyToPoint, decompose } from '../dist/geometry/matrix.js';
 
 const ok = (name, cond) => console.log(cond ? 'PASS' : 'FAIL', name);
@@ -178,4 +178,33 @@ ok('decompose node angle', close(decompose(rotNode.transform).angle, 0.6));
 
   ok('skew: zero drag is identity', skewFromEdgeDrag(box, 'n', { x: 0, y: 0 })[2] === 0);
   ok('skew: degenerate box is safe', skewFromEdgeDrag({ x:0,y:0,w:0,h:0 }, 'n', { x: 5, y: 0 })[2] === 0);
+}
+
+// --- pressure: width mapping, detection, and hit-test slop
+{
+  const base = 10;
+  ok('pressure: no data draws at full width', strokeWidthAt(base, undefined) === base);
+  ok('pressure: 1 is full width', close(strokeWidthAt(base, 1), base));
+  ok('pressure: 0 keeps a visible floor', strokeWidthAt(base, 0) > 0 && strokeWidthAt(base, 0) < base);
+  ok('pressure: is monotonic', strokeWidthAt(base, 0.2) < strokeWidthAt(base, 0.8));
+  ok('pressure: clamps out-of-range input',
+    close(strokeWidthAt(base, 5), strokeWidthAt(base, 1)) && close(strokeWidthAt(base, -5), strokeWidthAt(base, 0)));
+
+  const plain = { id: 'p1', type: 'path', points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], style: { ...style, strokeWidth: 4 } };
+  const withP = { id: 'p2', type: 'path', points: [{ x: 0, y: 0, pressure: 1 }, { x: 10, y: 0, pressure: 0.1 }], style: { ...style, strokeWidth: 4 } };
+  ok('hasPressure: plain stroke is false', hasPressure(plain) === false);
+  ok('hasPressure: pressure stroke is true', hasPressure(withP) === true);
+
+  // segment width is the average of its two endpoint widths
+  const w = segmentWidths(withP.points, 4);
+  ok('segmentWidths: one per segment', w.length === withP.points.length - 1);
+  ok('segmentWidths: averages endpoints',
+    close(w[0], (strokeWidthAt(4, 1) + strokeWidthAt(4, 0.1)) / 2));
+
+  // a light-pressure stroke is thinner, so its hit slop shrinks with it
+  const light = { id: 'p3', type: 'path', points: [{ x: 0, y: 0, pressure: 0.01 }, { x: 40, y: 0, pressure: 0.01 }], style: { ...style, strokeWidth: 40 } };
+  const heavy = { id: 'p4', type: 'path', points: [{ x: 0, y: 0, pressure: 1 }, { x: 40, y: 0, pressure: 1 }], style: { ...style, strokeWidth: 40 } };
+  const probe = { x: 20, y: 15 }; // 15 above the stroke's spine
+  ok('pressure hit: heavy stroke is hit', hitTestNode(heavy, probe, 0) === true);
+  ok('pressure hit: light stroke is missed at the same point', hitTestNode(light, probe, 0) === false);
 }
